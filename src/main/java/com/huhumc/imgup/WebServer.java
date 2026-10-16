@@ -63,6 +63,14 @@ public final class WebServer {
     private final GameBridge game;
     private final Messages messages;
 
+    /**
+     * 插件版本号，由插件在启动时告知（Bukkit 的 getDescription().getVersion()）。
+     *
+     * 不写死在这里 —— 写死就一定会和 plugin.yml 里的版本号漂移，
+     * /api/health 报出来的版本没人敢信。
+     */
+    private String pluginVersion = "unknown";
+
     /** 每个 IP 的取码记录，用于限流。 */
     private final Map<String, List<Long>> codeHits = new LinkedHashMap<>();
 
@@ -79,6 +87,12 @@ public final class WebServer {
     private HttpServer server;
     private ExecutorService executor;
     private volatile boolean running;
+
+    public void setPluginVersion(String version) {
+        if (version != null && !version.isBlank()) {
+            this.pluginVersion = version;
+        }
+    }
 
     public WebServer(Logger log, WebConfig config, UploadStore store,
                      Sessions sessions, Messages messages, GameBridge game) {
@@ -260,7 +274,7 @@ public final class WebServer {
     private int apiHealth(HttpExchange exchange) throws IOException {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("ok", true);
-        body.put("version", "2.0.0");
+        body.put("version", pluginVersion);
         body.put("web", true);
         body.put("images_dir", store.imagesDir().toString());
         body.put("counts", store.counts());

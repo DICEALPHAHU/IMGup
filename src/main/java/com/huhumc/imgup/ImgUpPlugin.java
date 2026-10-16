@@ -140,8 +140,15 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
      */
     private void loadMessages() {
         Messages.extractDefaults(getLogger(), resource -> {
+            // 先在磁盘上确认一下再调 saveResource：saveResource 遇到已存在的文件
+            // 会打一条 "Could not save ... because it already exists" 的 WARN，
+            // 每次 reload 都刷两条，看着像出错，其实完全正常。
+            Path target = getDataFolder().toPath().resolve(resource);
+            if (java.nio.file.Files.exists(target)) {
+                return;
+            }
             if (getResource(resource) != null) {
-                saveResource(resource, false);   // false = 已存在就不覆盖
+                saveResource(resource, false);
             }
         });
         Path dir = getDataFolder().toPath().resolve(webConfig.messagesDir);
@@ -160,6 +167,7 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
             return;
         }
         web = new WebServer(getLogger(), webConfig, store, sessions, messages, this);
+        web.setPluginVersion(getDescription().getVersion());
         if (!web.start()) {
             getLogger().warning("网站没起来，但 /imgup 指令仍然可用（玩家确认了也没地方上传）");
         }

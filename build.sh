@@ -14,7 +14,12 @@ API_VERSION="26.3.build.194-stable"
 CACHE_ROOT="${IMGUP_BUILD_CACHE:-$HERE/.build-cache}"
 DEPS_DIR="$CACHE_ROOT/deps"
 OUT_DIR="$HERE/target"
-JAR_NAME="ImgUp-2.0.0.jar"
+# 产物命名：插件名-版本号-git短哈希.jar（不在 git 仓库里就用 nogit）
+VERSION="$(sed -n 's/^version:[[:space:]]*//p' src/main/resources/plugin.yml | head -1 | tr -d '\r')"
+[ -z "$VERSION" ] && VERSION="0.0.0"
+GIT_SHORT="$(git rev-parse --short HEAD 2>/dev/null || true)"
+[ -z "$GIT_SHORT" ] && GIT_SHORT="nogit"
+JAR_NAME="ImgUp-${VERSION}-${GIT_SHORT}.jar"
 JAVAC_RELEASE="${IMGUP_JAVA_RELEASE:-21}"
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "缺少 $1，请先安装" >&2; exit 1; }; }
@@ -199,6 +204,20 @@ with zipfile.ZipFile(jar) as zf:
     if dead:
         sys.exit("这些 site.* 键声明了但没有页面用到（改了不会生效）：" + str(dead))
     print("    模板占位符都能在语言文件里找到，且没有用不上的 site.* 键")
+
+    # 版本号只能有一个来源（plugin.yml）。WebServer 里若写死版本号，
+    # /api/health 报出来的就和插件实际版本对不上 —— 这种漂移直接拦掉。
+    with zf.open("com/huhumc/imgup/WebServer.class") as fh:
+        web_bytes = fh.read()
+    import re as _re
+    version_in_yml = _re.search(rb"version: ([0-9][^\r\n]*)", head.encode() if isinstance(head, str) else head)
+    # 从字节码里找形如 "1.0.0" 的字面量，如果它和 plugin.yml 的版本同时出现两次以上，
+    # 说明某处写死了版本号（正常只有一个来源）
+    literal = version_in_yml.group(1) if version_in_yml else b""
+    if literal and web_bytes.count(literal) > 0:
+        sys.exit("WebServer.class 里出现了写死的版本号 " + literal.decode()
+                 + "；版本号只能来自 plugin.yml，请不要在代码里写死")
+    print("    版本号没有在 WebServer 里写死")
 PY
 
 ls -la "$OUT_DIR/$JAR_NAME"
