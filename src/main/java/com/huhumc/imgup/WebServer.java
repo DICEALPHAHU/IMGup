@@ -80,7 +80,7 @@ public final class WebServer {
     private String pluginName = "ImgUp";
 
     /** 源码仓库地址。只在这里定义一处，模板用 $plugin_url 取。 */
-    private static final String PLUGIN_URL = "https://github.com/DICEALPAHU/IMGup";
+    private static final String PLUGIN_URL = "https://github.com/DICEALPHAHU/IMGup";
 
     /** 工信部备案查询地址。备案号按国内惯例链到这里。 */
     private static final String ICP_LOOKUP_URL = "https://beian.miit.gov.cn/";

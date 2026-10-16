@@ -545,10 +545,10 @@ public final class HttpSelfTest {
             check(page + " 页脚有插件名和版本", html.contains("ImgUp 9.9.9-test"),
                     "页脚里没找到 ImgUp 9.9.9-test");
             check(page + " 页脚有 GitHub 链接",
-                    html.contains("href=\"https://github.com/DICEALPAHU/IMGup\""),
+                    html.contains("href=\"https://github.com/DICEALPHAHU/IMGup\""),
                     "页脚里没找到仓库链接");
             check(page + " 链接文字是完整地址",
-                    html.contains(">https://github.com/DICEALPAHU/IMGup</a>"),
+                    html.contains(">https://github.com/DICEALPHAHU/IMGup</a>"),
                     "链接文字不是完整地址");
             check(page + " 外链带 target=_blank 与 rel=noopener",
                     html.contains("target=\"_blank\"")

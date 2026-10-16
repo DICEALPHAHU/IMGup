@@ -289,7 +289,7 @@ public final class ConfigElementsTest {
             bad++;
             System.out.println("  [!!]   页脚没有替换 {name}/{version} 占位符");
         }
-        if (home.contains("href=\"https://github.com/DICEALPAHU/IMGup\"")) {
+        if (home.contains("href=\"https://github.com/DICEALPHAHU/IMGup\"")) {
             ok++;
             System.out.println("  [OK]   页脚有 GitHub 链接");
         } else {
