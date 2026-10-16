@@ -154,6 +154,9 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
         });
         Path dir = getDataFolder().toPath().resolve(webConfig.messagesDir);
         this.messages = new Messages(dir, webConfig.language);
+        // 升级路径：把 jar 里新增的键补进站长磁盘上的语言文件。
+        // 不做这一步的话，插件新加的消息在老服务器上会显示成键名。
+        this.messages.mergeDefaults(getLogger(), Resources::readText);
         this.messages.load(getLogger());
     }
 

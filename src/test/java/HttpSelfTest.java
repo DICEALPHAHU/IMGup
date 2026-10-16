@@ -139,6 +139,7 @@ public final class HttpSelfTest {
             testClientLocaleMapping();
             testGameMessagesAreBilingual();
             testInjectedMessagesHaveNoRawPlaceholders();
+            testMessageFileUpgradeMerge();
         } finally {
             server.stop();
         }
@@ -491,6 +492,64 @@ public final class HttpSelfTest {
         String noArgs = messages.get("zh", "game.approved");
         check("没给替换值时占位符被清掉（不露 {name}）", !noArgs.contains("{name}"),
                 "拿到 " + noArgs);
+    }
+
+    // ------------------------------------------ 语言文件升级合并
+
+    private static void testMessageFileUpgradeMerge() throws Exception {
+        section("升级时补齐语言文件的新键");
+        Path dir = Files.createTempDirectory("imgup-merge");
+        try {
+            // 造一个「旧版本」的 zh.yml：只有几个键，其中一个站长改过
+            Path zhFile = dir.resolve("zh.yml");
+            Files.writeString(zhFile, String.join("\n",
+                    "# 站长自己的语言文件",
+                    "meta.name: \"中文（简体）\"",
+                    "meta.code: \"zh\"",
+                    "site.brand: \"我的服务器站名\"",     // 站长改过的值
+                    "game.confirm_ok: \"改过的确认文案\"",  // 站长改过的值
+                    "") + "\n", java.nio.charset.StandardCharsets.UTF_8);
+
+            Messages m = new Messages(dir, "zh");
+            int added = m.mergeDefaults(java.util.logging.Logger.getLogger("merge-test"),
+                    com.huhumc.imgup.Resources::readText);
+
+            check("补进了新键", added > 0, "补了 " + added + " 个");
+
+            String after = Files.readString(zhFile, java.nio.charset.StandardCharsets.UTF_8);
+            check("新键 game.usage_header 已补上", after.contains("game.usage_header:"),
+                    "文件里没找到 game.usage_header");
+            check("新键 game.notify_approved 已补上", after.contains("game.notify_approved:"));
+
+            // 关键：站长改过的值不能被覆盖
+            check("站长改过的站名没被覆盖",
+                    after.contains("site.brand: \"我的服务器站名\""),
+                    "site.brand 被冲掉了");
+            check("站长改过的确认文案没被覆盖",
+                    after.contains("game.confirm_ok: \"改过的确认文案\""),
+                    "game.confirm_ok 被冲掉了");
+
+            // 补完之后这个文件应当是「完整」的：加载后不该再出现键名
+            m.load(java.util.logging.Logger.getLogger("merge-test"));
+            checkEquals("加载后不再返回键名", false,
+                    "game.usage_header".equals(m.get("zh", "game.usage_header")));
+            checkEquals("站长改的值生效", "我的服务器站名", m.get("zh", "site.brand"));
+
+            // 幂等：再合并一次不该重复追加
+            int again = m.mergeDefaults(java.util.logging.Logger.getLogger("merge-test"),
+                    com.huhumc.imgup.Resources::readText);
+            checkEquals("重复合并不会再追加", 0, again);
+        } finally {
+            try (var walk = Files.walk(dir)) {
+                walk.sorted(java.util.Comparator.reverseOrder()).forEach(f -> {
+                    try {
+                        Files.deleteIfExists(f);
+                    } catch (Exception ignored) {
+                        // 清理失败不影响结论
+                    }
+                });
+            }
+        }
     }
 
     // ------------------------------------------ 注入给前端的文案表
@@ -922,6 +981,11 @@ public final class HttpSelfTest {
 
     private static void check(String label, boolean ok) {
         check(label, ok, "");
+    }
+
+    private static void checkEquals(String label, Object expected, Object actual) {
+        boolean same = expected == null ? actual == null : expected.equals(actual);
+        check(label, same, "期望 " + expected + "，实际 " + actual);
     }
 
     private static void check(String label, boolean ok, String detail) {

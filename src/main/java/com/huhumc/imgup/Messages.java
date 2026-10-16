@@ -76,6 +76,96 @@ public final class Messages {
         }
     }
 
+    /** 插件自带语言文件的语言代码。这几个文件升级时会自动补齐新键。 */
+    private static final String[] BUILT_IN = {"zh", "en"};
+
+    /**
+     * 把 jar 里**新增**的键补进磁盘上的语言文件。
+     *
+     * 为什么需要这个：升级插件时，站长磁盘上的 messages/zh.yml 是他改过的旧版本，
+     * 插件新加的键（比如 game.* 那一批）不在里面。不补的话，玩家聊天框里就会直接
+     * 显示 game.usage_header 这种键名 —— 对「发给别人用」的插件这不可接受。
+     *
+     * 只**追加**缺失的键，绝不覆盖站长已有的值，所以他的翻译不会被冲掉。
+     *
+     * @param bundledResource 取 jar 内资源的函数（传资源路径，返回文本或 null）
+     * @return 一共补了多少个键
+     */
+    public int mergeDefaults(Logger log, java.util.function.Function<String, String> bundledResource) {
+        int total = 0;
+        for (String lang : BUILT_IN) {
+            String bundled = bundledResource.apply("messages/" + lang + ".yml");
+            if (bundled == null || bundled.isBlank()) {
+                continue;
+            }
+            Path file = dir.resolve(lang + ".yml");
+            if (!Files.isRegularFile(file)) {
+                continue;
+            }
+
+            Map<String, String> fresh = parse(bundled);
+            java.util.Set<String> existing = parse(readFile(file)).keySet();
+            List<String> missing = new ArrayList<>();
+            for (String key : fresh.keySet()) {
+                if (!existing.contains(key)) {
+                    missing.add(key);
+                }
+            }
+            if (missing.isEmpty()) {
+                continue;
+            }
+
+            StringBuilder add = new StringBuilder();
+            add.append('\n')
+               .append("# ---------------------------------------------------------------- ")
+               .append("插件升级新增的文案 / added by a plugin upgrade --\n")
+               .append("# 这些键在你升级前不存在，插件自动补上了。\n")
+               .append("# These keys did not exist before the upgrade and were added automatically.\n");
+            for (String key : missing) {
+                add.append(key).append(": ").append(quote(fresh.get(key))).append('\n');
+            }
+            try {
+                Files.writeString(file, readFile(file) + add, StandardCharsets.UTF_8);
+                total += missing.size();
+                log.info("语言文件 " + lang + ".yml 补上了 " + missing.size()
+                        + " 个新键（升级新增，未改动你原有的翻译）");
+            } catch (IOException e) {
+                log.log(Level.WARNING, "无法补充语言文件 " + file, e);
+            }
+        }
+        return total;
+    }
+
+    /** 解析一段 YAML 文本，取所有叶子键值。 */
+    private static Map<String, String> parse(String text) {
+        YamlConfiguration yaml = new YamlConfiguration();
+        try {
+            yaml.loadFromString(text);
+        } catch (org.bukkit.configuration.InvalidConfigurationException e) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String key : yaml.getKeys(true)) {
+            if (yaml.isString(key)) {
+                out.put(key, yaml.getString(key, ""));
+            }
+        }
+        return out;
+    }
+
+    private static String readFile(Path file) {
+        try {
+            return Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    /** 按 YAML 双引号字符串转义。 */
+    private static String quote(String value) {
+        return '"' + String.valueOf(value).replace("\\", "\\\\").replace("\"", "\\\"") + '"';
+    }
+
     /**
      * 读取目录下所有 *.yml。
      *
