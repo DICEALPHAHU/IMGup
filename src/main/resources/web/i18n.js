@@ -215,6 +215,7 @@
       'site.brand': 'CustomImages',
       'site.nav_admin': 'Admin',
       'site.footer_note': 'Server MOTD: {motd}. Posting in game requires the /image create permission — ask your admin if you do not have it.',
+      'site.footer_plugin': '本插件 {name} {version} · 开源地址',
       'site.footer_copyright': 'Copyright 2026 {server} · All rights reserved',
       'site.admin_heading': 'Image management',
       'site.admin_lede': 'Review, approve, reject and delete every image players have uploaded.',

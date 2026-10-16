@@ -222,6 +222,27 @@ with zipfile.ZipFile(jar) as zf:
                  + str(sorted(set(missing_keys))))
 
     # 页面里真正用到的 $msg_ 键必须来自「当前语言」，且键名要拼得出来
+    # 模板里用到的非 $msg_ 变量（$name、$plugin_url 这些）必须真的有人提供。
+    # 跟缺键一样，没人提供的变量会**静默渲染成空字符串** —— 后台页脚曾经
+    # 就因为 serveAdminPage 绕过了公共取值，渲染出一个 href="" 的空链接。
+    with zf.open("com/huhumc/imgup/WebServer.class") as fh:
+        server_class = fh.read()
+    # 从源码里取（class 里的常量池不好可靠地解析字符串归属）
+    with open("src/main/java/com/huhumc/imgup/WebServer.java", encoding="utf-8") as fh:
+        server_src = fh.read()
+    provided = set(re.findall(r'values\.put\("([a-z_]+)"', server_src))
+    used_vars = set()
+    for page in ("index", "upload", "result", "admin"):
+        with zf.open("web/" + page + ".html") as fh:
+            html = fh.read().decode("utf-8")
+        for v in re.findall(r"\$([a-zA-Z_][a-zA-Z0-9_]*)", html):
+            if not v.startswith("msg_"):
+                used_vars.add(v)
+    unprovided = sorted(used_vars - provided)
+    if unprovided:
+        sys.exit("模板用了但 WebServer 没提供的变量（会渲染成空白）：" + str(unprovided))
+    print("    模板用到的 " + str(len(used_vars)) + " 个变量都有提供")
+
     print("    模板占位符都能在语言文件里找到，且没有用不上的 site.* 键")
 
     # 版本号只能有一个来源（plugin.yml）。WebServer 里若写死版本号，

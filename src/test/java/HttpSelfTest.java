@@ -108,6 +108,7 @@ public final class HttpSelfTest {
                 return "Example Server";
             }
         });
+        server.setPluginInfo("ImgUp", "9.9.9-test");
         if (!server.start()) {
             System.out.println("服务器起不来，测试无法继续");
             System.exit(1);
@@ -140,6 +141,7 @@ public final class HttpSelfTest {
             testGameMessagesAreBilingual();
             testInjectedMessagesHaveNoRawPlaceholders();
             testFooterUsesInlineCode();
+            testFooterPluginLine();
             testMessageFileUpgradeMerge();
         } finally {
             server.stop();
@@ -517,6 +519,36 @@ public final class HttpSelfTest {
         // 注入的那张表里也应该是同样的 HTML，前端覆盖时才不会丢样式
         String table = html.contains("<code>/image create</code>") ? "ok" : "";
         check("服务端渲染与注入表一致", !table.isEmpty());
+    }
+
+    // ------------------------------------------ 页脚的插件信息行
+
+    /** 页脚最后一行要有插件名、版本，以及能点过去的源码地址。 */
+    private static void testFooterPluginLine() throws Exception {
+        section("页脚：插件名 / 版本 / 源码链接");
+
+        for (String page : new String[]{"/", "/upload", "/result", "/admin"}) {
+            String html = get(page).text()
+                    .replaceAll("(?s)<script>window\\.IMGUP_.*?</script>", "");
+
+            check(page + " 页脚有插件名和版本", html.contains("ImgUp 9.9.9-test"),
+                    "页脚里没找到 ImgUp 9.9.9-test");
+            check(page + " 页脚有 GitHub 链接",
+                    html.contains("href=\"https://github.com/DICEALPAHU/IMGup\""),
+                    "页脚里没找到仓库链接");
+            check(page + " 链接文字是完整地址",
+                    html.contains(">https://github.com/DICEALPAHU/IMGup</a>"),
+                    "链接文字不是完整地址");
+            check(page + " 外链带 target=_blank 与 rel=noopener",
+                    html.contains("target=\"_blank\"")
+                            && html.contains("rel=\"noopener noreferrer\""),
+                    "外链属性不完整");
+        }
+
+        String html = get("/").text();
+        check("页脚没有残留 {name}/{version} 占位符",
+                !html.contains("{name}") && !html.contains("{version}"),
+                "还露着占位符");
     }
 
     // ------------------------------------------ 语言文件升级合并

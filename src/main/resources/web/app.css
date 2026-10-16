@@ -790,3 +790,19 @@ main.wrap { padding-bottom: 36px; }
   font-size: 12px;
   opacity: 0.72;
 }
+
+/* 页脚最后一行：插件名 + 版本 + 源码地址 */
+.foot-plugin {
+  font-size: 12px;
+  opacity: .82;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.foot-plugin a {
+  color: var(--accent);
+  word-break: break-all;
+}
+.foot-plugin a:hover { color: var(--accent-hi); }

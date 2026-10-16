@@ -76,6 +76,12 @@ public final class WebServer {
      */
     private String pluginVersion = "unknown";
 
+    /** 插件名，同样由插件在启动时告知（plugin.yml 的 name）。 */
+    private String pluginName = "ImgUp";
+
+    /** 源码仓库地址。只在这里定义一处，模板用 $plugin_url 取。 */
+    private static final String PLUGIN_URL = "https://github.com/DICEALPAHU/IMGup";
+
     /** 每个 IP 的取码记录，用于限流。 */
     private final Map<String, List<Long>> codeHits = new LinkedHashMap<>();
 
@@ -93,7 +99,10 @@ public final class WebServer {
     private ExecutorService executor;
     private volatile boolean running;
 
-    public void setPluginVersion(String version) {
+    public void setPluginInfo(String name, String version) {
+        if (name != null && !name.isBlank()) {
+            this.pluginName = name;
+        }
         if (version != null && !version.isBlank()) {
             this.pluginVersion = version;
         }
@@ -614,7 +623,8 @@ public final class WebServer {
         if (html == null) {
             return sendJson(exchange, 500, error("template_missing", 500, "后台页面缺失", null));
         }
-        return serveRenderedPage(exchange, html, "admin");
+        return serveRenderedPage(exchange, html, "admin",
+                pageValues(currentSession(exchange, false)));
     }
 
     /** /admin/api/<动作> */
@@ -861,6 +871,29 @@ public final class WebServer {
 
     // -------------------------------------------------------- 页面
 
+    /**
+     * 每个页面都要有的模板变量。
+     *
+     * 抽出来是因为后台页面原本绕过 servePage 直接渲染，导致它拿不到这些值 ——
+     * 页脚的 $plugin_url 就渲染成了空的 href。模板变量缺失是**静默**的
+     * （渲染成空字符串），所以两条路径必须共用同一份。
+     */
+    private Map<String, String> pageValues(Sessions.Session session) {
+        String player = session == null || session.player == null ? "" : session.player;
+        boolean verified = session != null && session.verified();
+        Map<String, String> values = new LinkedHashMap<>();
+        values.put("player", Texts.escapeHtml(player));
+        values.put("verified", verified ? "1" : "");
+        values.put("base_url", Texts.escapeHtml(config.base()));
+        values.put("auto_publish", config.autoPublish ? "1" : "");
+        values.put("max_bytes_mb", String.valueOf(config.maxUploadBytes / (1024 * 1024)));
+        // 页脚那行「本插件 xxx 版本 · 开源地址」用
+        values.put("plugin_name", Texts.escapeHtml(pluginName));
+        values.put("plugin_version", Texts.escapeHtml(pluginVersion));
+        values.put("plugin_url", Texts.escapeHtml(PLUGIN_URL));
+        return values;
+    }
+
     private int servePage(HttpExchange exchange, String page) throws IOException {
         String html = Resources.readText("web/" + page + ".html");
         if (html == null) {
@@ -869,18 +902,10 @@ public final class WebServer {
         }
 
         Sessions.Session session = currentSession(exchange, false);
-        String player = session == null || session.player == null ? "" : session.player;
-        boolean verified = session != null && session.verified();
-
-        Map<String, String> values = new LinkedHashMap<>();
-        values.put("player", Texts.escapeHtml(player));
-        values.put("verified", verified ? "1" : "");
-        values.put("base_url", Texts.escapeHtml(config.base()));
-        values.put("auto_publish", config.autoPublish ? "1" : "");
-        values.put("max_bytes_mb", String.valueOf(config.maxUploadBytes / (1024 * 1024)));
-
+        Map<String, String> values = pageValues(session);
         if ("result".equals(page)) {
-            addResultValues(exchange, values, player, verified);
+            String player = session == null || session.player == null ? "" : session.player;
+            addResultValues(exchange, values, player, session != null && session.verified());
         }
         return serveRenderedPage(exchange, html, page, values);
     }
@@ -964,7 +989,10 @@ public final class WebServer {
                     ? messages.html(lang, key, "motd", motd)
                     : key.equals("site.footer_copyright")
                             ? messages.html(lang, key, "server", server)
-                            : messages.html(lang, key);
+                            : key.equals("site.footer_plugin")
+                                    ? messages.html(lang, key,
+                                            "name", pluginName, "version", pluginVersion)
+                                    : messages.html(lang, key);
             // 注入给前端的表用的是同一份值（已转义、已带 <code>），
             // 前端引擎按 innerHTML 应用，跟服务端渲染出来的一致。
             substituted.put(key, value);

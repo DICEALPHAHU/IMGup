@@ -47,7 +47,7 @@ public final class ConfigElementsTest {
                 "site.result_rename_button",
                 // 这两个的值保留占位符，由 checkFooterServerInfo 单独验证，
                 // 所以不做 CUSTOM- 断言（见下面的 pageSpecific）
-                "site.footer_note", "site.footer_copyright");
+                "site.footer_note", "site.footer_copyright", "site.footer_plugin");
 
         List<String> pageSpecific = List.of(
                 "site.nav_admin", "site.nav_reverify", "site.nav_reupload",
@@ -67,6 +67,9 @@ public final class ConfigElementsTest {
                 value = "MOTD:{motd}";
             } else if (key.equals("site.footer_copyright")) {
                 value = "SERVER:{server}";
+            } else if (key.equals("site.footer_plugin")) {
+                // 插件名和版本由插件在启动时告诉网站，保留占位符才能验证替换
+                value = "PLUGIN {name} {version}";
             } else {
                 value = "CUSTOM-" + key.substring("site.".length());
             }
@@ -107,6 +110,7 @@ public final class ConfigElementsTest {
                         return "Test Server";
                     }
                 });
+        server.setPluginInfo("TestPlugin", "1.2.3");
         if (!server.start()) {
             System.out.println("服务器起不来");
             System.exit(1);
@@ -261,6 +265,30 @@ public final class ConfigElementsTest {
         } else {
             bad++;
             System.out.println("  [!!]   这些引用取不到（页面会缺样式或脚本）：" + broken);
+        }
+
+        System.out.println("\n=== 页脚的插件信息行 ===");
+        String home = fetch(base + "/");
+        if (home.contains("PLUGIN TestPlugin 1.2.3")) {
+            ok++;
+            System.out.println("  [OK]   页脚显示插件名和版本（占位符已替换）");
+        } else {
+            bad++;
+            System.out.println("  [!!]   页脚没有替换 {name}/{version} 占位符");
+        }
+        if (home.contains("href=\"https://github.com/DICEALPAHU/IMGup\"")) {
+            ok++;
+            System.out.println("  [OK]   页脚有 GitHub 链接");
+        } else {
+            bad++;
+            System.out.println("  [!!]   页脚没有 GitHub 链接");
+        }
+        if (home.contains("rel=\"noopener noreferrer\"") && home.contains("target=\"_blank\"")) {
+            ok++;
+            System.out.println("  [OK]   外链带 target=_blank 和 rel=noopener");
+        } else {
+            bad++;
+            System.out.println("  [!!]   外链缺少 target/rel（有安全与体验问题）");
         }
 
         // 单独把样式表和脚本点出来，它们没了页面就废了

@@ -171,7 +171,8 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
             return;
         }
         web = new WebServer(getLogger(), webConfig, store, sessions, messages, this);
-        web.setPluginVersion(getDescription().getVersion());
+        web.setPluginInfo(getDescription().getName(),
+                getDescription().getVersion());
         if (!web.start()) {
             getLogger().warning("网站没起来，但 /imgup 指令仍然可用（玩家确认了也没地方上传）");
         }
