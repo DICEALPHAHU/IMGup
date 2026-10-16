@@ -47,12 +47,14 @@ public final class WebServer {
     }
 
     private static final String COOKIE_SESSION = "imgup_sid";
+    private static final String COOKIE_LANG = "imgup_lang";
 
     private final Logger log;
     private final WebConfig config;
     private final UploadStore store;
     private final Sessions sessions;
     private final GameBridge game;
+    private final Messages messages;
 
     /** 每个 IP 的取码记录，用于限流。 */
     private final Map<String, List<Long>> codeHits = new LinkedHashMap<>();
@@ -62,11 +64,12 @@ public final class WebServer {
     private volatile boolean running;
 
     public WebServer(Logger log, WebConfig config, UploadStore store,
-                     Sessions sessions, GameBridge game) {
+                     Sessions sessions, Messages messages, GameBridge game) {
         this.log = log;
         this.config = config;
         this.store = store;
         this.sessions = sessions;
+        this.messages = messages;
         this.game = game;
     }
 
@@ -198,6 +201,12 @@ public final class WebServer {
         if (path.equals("/api/rename") && "POST".equals(method)) {
             return apiRename(exchange);
         }
+        if (path.equals("/api/lang")) {
+            return apiLang(exchange);
+        }
+        if (path.equals("/api/languages")) {
+            return apiLanguages(exchange);
+        }
         if (path.startsWith("/uploads/")) {
             return servePublished(exchange, path.substring("/uploads/".length()));
         }
@@ -260,6 +269,35 @@ public final class WebServer {
                     cookie(COOKIE_SESSION, session.id,
                             (int) (config.codeTtlMillis / 1000L) * 12)));
         }
+        return sendJson(exchange, 200, body);
+    }
+
+    /**
+     * 切语言：把选择记进 cookie，下次打开这个网站还是这门语言。
+     *
+     * 前端拿到 200 后刷新页面即可（服务端会用新语言重新渲染）。
+     */
+    private int apiLang(HttpExchange exchange) throws IOException {
+        String lang = queryParam(exchange, "lang");
+        if (!Messages.isValidLang(lang) || !messages.has(lang)) {
+            return sendJson(exchange, 400, error("bad_request", 400,
+                    "不支持这个语言：" + lang, null));
+        }
+        String normalized = lang.toLowerCase(Locale.ROOT);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", true);
+        body.put("lang", normalized);
+        body.put("available", messages.languages());
+        return sendJson(exchange, 200, body,
+                List.of(cookie(COOKIE_LANG, normalized, 365 * 24 * 3600)));
+    }
+
+    /** 语言开关的选项：给前端列出所有可用的语言文件。 */
+    private int apiLanguages(HttpExchange exchange) throws IOException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", true);
+        body.put("default", messages.defaultLang());
+        body.put("available", messages.languages());
         return sendJson(exchange, 200, body);
     }
 
@@ -573,20 +611,23 @@ public final class WebServer {
         values.put("auto_publish", config.autoPublish ? "1" : "");
         values.put("max_bytes_mb", String.valueOf(config.maxUploadBytes / (1024 * 1024)));
 
-        // ---- 网站元素：全部来自 config.yml 的 site.* ----
-        // 中文值直接填进 HTML（就是默认显示的样子），英文那套交给前端翻译表，
-        // 所以站长改 config.yml 一句话，中英两边一起变，不用碰 HTML。
-        for (Map.Entry<String, String> entry : config.siteZh.entrySet()) {
+        // ---- 页面文案：全部来自 messages/<语言>.yml ----
+        // 按请求语言把 site.* 的值直接渲染进 HTML；同时把整个语言的文案表
+        // 注入给前端（切语言时用），所以语言文件是唯一来源。
+        String lang = resolveLang(exchange);
+        values.put("lang", lang);
+        for (Map.Entry<String, String> entry : messages.table(lang).entrySet()) {
             String key = entry.getKey();
-            if (!key.startsWith("__")) {
-                values.put("site_" + key, Texts.escapeHtml(entry.getValue()));
+            if (key.startsWith("site.")) {
+                values.put("site_" + key.substring("site.".length()),
+                        Texts.escapeHtml(entry.getValue()));
             }
         }
         values.put("site_show_manual_claim", config.showManualClaim ? "1" : "");
         values.put("site_allow_rename", config.allowRename ? "1" : "");
         values.put("site_show_copy_buttons", config.showCopyButtons ? "1" : "");
-        // 这个 JSON 会进 <script> 里，必须把 </script> 和引号都挡住
-        values.put("site_english_json", englishOverridesJson());
+        // 这个 JSON 会进 <script> 里，必须把 </script> 挡住
+        values.put("messages_json", messagesJson(lang));
 
         if ("result".equals(page)) {
             String name = queryParam(exchange, "name");
@@ -643,8 +684,9 @@ public final class WebServer {
         String output = render(html, values);
         // 把 config.yml 里的英文文案注入成全局对象，i18n.js 启动时合并进字典。
         // 放在 </head> 之前，保证引擎一读就能拿到。
-        String injection = "<script>window.IMGUP_SITE_EN="
-                + values.getOrDefault("site_english_json", "{}") + ";</script>\n";
+        String injection = "<script>window.IMGUP_MESSAGES="
+                + values.getOrDefault("messages_json", "{}")
+                + ";window.IMGUP_LANG=" + Json.write(lang) + ";</script>\n";
         int head = output.indexOf("</head>");
         if (head >= 0) {
             output = output.substring(0, head) + injection + output.substring(head);
@@ -921,18 +963,32 @@ public final class WebServer {
      * 注入到页面的 &lt;script&gt; 里，i18n.js 启动时读 window.IMGUP_SITE_EN。
      * 这样「网站元素」的唯一来源就是 config.yml，模板里不用写死任何一句文案。
      */
-    private String englishOverridesJson() {
-        Map<String, Object> overrides = new LinkedHashMap<>();
-        for (Map.Entry<String, String> entry : config.siteEn.entrySet()) {
-            String key = entry.getKey();
-            if (key.startsWith("__")) {
-                continue;
-            }
-            overrides.put("site." + key, entry.getValue());
+    private String messagesJson(String lang) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : messages.table(lang).entrySet()) {
+            out.put(entry.getKey(), entry.getValue());
         }
-        // 放进 <script> 里，必须防住 </script> —— 否则英文文案里出现这几个字符
+        // 放进 <script> 里，必须防住 </script> —— 否则文案里出现这几个字符
         // 就会提前结束脚本块。JSON 里 \u003c 是合法的，浏览器会还原成 <
-        return Json.write(overrides).replace("<", "\\u003c");
+        return Json.write(out).replace("<", "\\u003c");
+    }
+
+    /**
+     * 决定这次请求用哪门语言。
+     *
+     * 优先级：?lang=xx（玩家点了语言开关）→ cookie（记住上次选的）→ 默认语言。
+     * 语言代码会被严格校验，因为它不能用来拼路径。
+     */
+    private String resolveLang(HttpExchange exchange) {
+        String fromQuery = queryParam(exchange, "lang");
+        if (Messages.isValidLang(fromQuery) && messages.has(fromQuery)) {
+            return fromQuery.toLowerCase(Locale.ROOT);
+        }
+        String fromCookie = cookieValue(exchange, COOKIE_LANG);
+        if (Messages.isValidLang(fromCookie) && messages.has(fromCookie)) {
+            return fromCookie.toLowerCase(Locale.ROOT);
+        }
+        return messages.defaultLang();
     }
 
     /** 供后台用：把所有待审核的图列出来。 */

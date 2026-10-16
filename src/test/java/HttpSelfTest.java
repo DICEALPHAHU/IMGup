@@ -1,4 +1,5 @@
 import com.huhumc.imgup.ImageTools;
+import com.huhumc.imgup.Messages;
 import com.huhumc.imgup.Json;
 import com.huhumc.imgup.Sessions;
 import com.huhumc.imgup.UploadStore;
@@ -44,6 +45,7 @@ public final class HttpSelfTest {
     private static Sessions sessions;
     private static UploadStore store;
     private static WebServer server;
+    private static Messages messages;
     private static final List<String> notified = new ArrayList<>();
 
     public static void main(String[] args) throws Exception {
@@ -74,8 +76,11 @@ public final class HttpSelfTest {
 
         sessions = new Sessions(3600_000L, config.codeTtlMillis);
         store = new UploadStore(dataDir, imagesDir);
+        // 语言文件从测试 classpath 里的 messages/ 目录读（就是 jar 里那两份）
+        messages = new Messages(java.nio.file.Paths.get("__messages__"), config.language);
+        messages.loadTestFixtures(root.resolve("messages"));
         server = new WebServer(java.util.logging.Logger.getLogger("imgup-test"),
-                config, store, sessions, new WebServer.GameBridge() {
+                config, store, sessions, messages, new WebServer.GameBridge() {
             @Override
             public void notify(String player, String message) {
                 notified.add(player + ": " + message);
@@ -106,7 +111,8 @@ public final class HttpSelfTest {
             testRejectsOversize();
             testUnverifiedCannotUpload();
             testPathTraversalBlocked();
-            testSiteElementsFromConfig();
+            testSiteElementsFromLanguageFile();
+            testLanguageSwitch();
         } finally {
             server.stop();
         }
@@ -151,10 +157,16 @@ public final class HttpSelfTest {
         for (String path : new String[]{"/", "/upload", "/result"}) {
             Reply reply = get(path);
             check(path + " 返回 200", reply.status == 200, "拿到 " + reply.status);
-            check(path + " 没有残留的 $ 占位符", !reply.text().matches("(?s).*\\$[a-z_]{3,}.*"),
+            // 注意：注入的文案表 JSON 本身含 "$site_..." 这类字面量（它是离线兜底文案），
+            // 所以检查前先把那段 <script> 摘掉，只看真正发给浏览器的 HTML。
+            String htmlOnly = reply.text()
+                    .replaceAll("(?s)<script>window\\.IMGUP_.*?</script>", "");
+            check(path + " 没有残留的 $ 占位符",
+                    !htmlOnly.matches("(?s).*\\$[a-z_]{3,}.*"),
                     "还有没替换掉的变量");
             check(path + " 引入了 i18n 引擎", reply.text().contains("/static/i18n.js"));
-            check(path + " 注入了网站元素", reply.text().contains("IMGUP_SITE_EN"));
+            check(path + " 注入了文案表", reply.text().contains("IMGUP_MESSAGES"));
+            check(path + " 注入了当前语言", reply.text().contains("IMGUP_LANG"));
         }
         Reply home = get("/");
         check("首页显示配置里的站名", home.text().contains("图片上传站"));
@@ -327,13 +339,40 @@ public final class HttpSelfTest {
                 "拿到 " + reply2.status);
     }
 
-    private static void testSiteElementsFromConfig() throws Exception {
-        section("网站元素来自配置");
+    private static void testSiteElementsFromLanguageFile() throws Exception {
+        section("页面文案来自 messages/<语言>.yml");
         Reply home = get("/");
-        check("站名用配置里的值", home.text().contains("图片上传站"));
-        // 注入的英文表里应当有 site.brand
-        check("注入了英文覆盖表", home.text().contains("site.brand"));
-        check("英文值是配置里的", home.text().contains("Image Upload"));
+        check("默认语言渲染出中文站名", home.text().contains("图片上传站"));
+        check("注入了整张文案表", home.text().contains("IMGUP_MESSAGES"));
+        check("注入了当前语言", home.text().contains("IMGUP_LANG"));
+        check("表里有 site.brand", home.text().contains("site.brand"));
+        Reply english = get("/?lang=en");
+        check("?lang=en 渲染出英文站名", english.text().contains("Image Upload"),
+                "页面里没找到英文站名");
+        check("英文页面 html lang 正确", english.text().contains("lang=\"en\"")
+                || english.text().contains("IMGUP_LANG=\"en\""));
+    }
+
+    private static void testLanguageSwitch() throws Exception {
+        section("语言切换接口");
+        Reply list = get("/api/languages");
+        check("语言列表 200", list.status == 200, "拿到 " + list.status);
+        Map<String, Object> body = Json.parseObject(list.text());
+        check("默认语言是 zh", "zh".equals(body.get("default")), "拿到 " + body.get("default"));
+        check("列出了 zh 和 en", String.valueOf(body.get("available")).contains("zh")
+                && String.valueOf(body.get("available")).contains("en"),
+                "拿到 " + body.get("available"));
+
+        Reply bad = get("/api/lang?lang=../../etc");
+        check("非法语言代码被拒绝", bad.status == 400, "拿到 " + bad.status);
+
+        Session client = new Session();
+        Reply ok = client.postJson("/api/lang?lang=en", "{}");
+        check("切到英文 200", ok.status == 200, "拿到 " + ok.status);
+        check("下发了语言 cookie", "en".equals(client.cookie("imgup_lang")),
+                "cookie=" + client.cookie("imgup_lang"));
+        Reply home = client.get("/");
+        check("之后访问自动用英文", home.text().contains("Image Upload"));
     }
 
     // ------------------------------------------------------------ 工具

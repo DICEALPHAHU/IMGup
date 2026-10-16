@@ -2,10 +2,6 @@ package com.huhumc.imgup;
 
 import org.bukkit.configuration.file.FileConfiguration;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * 插件内置网站的全部可调参数。
@@ -107,16 +103,15 @@ public final class WebConfig {
     /** 玩家上传成功 / 审核结果出来时，是否在游戏内私聊通知玩家。 */
     public final boolean notifyPlayer;
 
-    // ---------------------------------------------------------- 网站元素
+    // ---------------------------------------------------------- 多语言
     //
-    // 页面上显示给玩家的文案。中文取 site.xxx，英文取 site.xxx_en
-    // （_en 留空就沿用中文）。插件渲染页面时用中文值填进 HTML，
-    // 同时把英文那套喂给前端的翻译表，所以站长在 config.yml 里改一句话，
-    // 中英两边一起变 —— 不用碰任何 HTML。
-    /** 元素名 -> 中文文案。 */
-    public final Map<String, String> siteZh;
-    /** 元素名 -> 英文文案（只包含确实填了英文的）。 */
-    public final Map<String, String> siteEn;
+    // 页面上显示什么、报错说什么，全部来自 messages/<语言>.yml（见 Messages 类）。
+    // 这里只留两件事：默认用哪门语言、语言文件放哪。
+    /** 默认语言，对应 messages/<language>.yml。 */
+    public final String language;
+
+    /** 语言文件目录（相对插件数据目录）。 */
+    public final String messagesDir;
 
     /** 关掉后首页不显示「手动输入上传码」那一块。 */
     public final boolean showManualClaim;
@@ -148,93 +143,14 @@ public final class WebConfig {
         this.requestTimeoutSeconds = clamp(cfg.getInt("web.request_timeout_seconds", 60), 5, 600);
         this.notifyPlayer = cfg.getBoolean("notify_player", true);
 
-        this.siteZh = readSite(cfg, false);
-        this.siteEn = readSite(cfg, true);
+        this.language = normalizeLang(cfg.getString("language", "zh"));
+        this.messagesDir = cfg.getString("messages_dir", "messages");
         this.showManualClaim = cfg.getBoolean("site.show_manual_claim", true);
         this.allowRename = cfg.getBoolean("site.allow_rename", true);
         this.showCopyButtons = cfg.getBoolean("site.show_copy_buttons", true);
     }
 
-    /** 内置兜底文案：config.yml 里漏写了某个键时用它，页面不会出现空白。 */
-    private static final Map<String, String[]> SITE_DEFAULTS = new LinkedHashMap<>();
-
-    static {
-        // 元素名 -> {中文, 英文}
-        SITE_DEFAULTS.put("title", new String[]{"图片上传站", "Image Upload"});
-        SITE_DEFAULTS.put("brand", new String[]{"图片上传站", "Image Upload"});
-        SITE_DEFAULTS.put("nav_admin", new String[]{"站长入口", "Admin"});
-        SITE_DEFAULTS.put("home_heading", new String[]{"上传海报", "Upload a poster"});
-        SITE_DEFAULTS.put("home_lede", new String[]{
-                "先在网页上获取一个 8 位上传码，再进游戏输入 /imgup 你的上传码 完成确认，就可以上传图片了。",
-                "Get an 8-character upload code here, then type /imgup <your code> in game to confirm. "
-                        + "After that you can upload images."});
-        SITE_DEFAULTS.put("home_step1_title", new String[]{"第一步 · 获取上传码", "Step 1 · Get an upload code"});
-        SITE_DEFAULTS.put("home_button", new String[]{"获取上传码", "Get upload code"});
-        SITE_DEFAULTS.put("home_step2_title", new String[]{"备用方式 · 手动输入上传码", "Fallback · enter the code manually"});
-        SITE_DEFAULTS.put("upload_heading", new String[]{"上传图片", "Upload an image"});
-        SITE_DEFAULTS.put("upload_lede", new String[]{
-                "选一张截图或海报，上传后会生成游戏内可用的图片名。",
-                "Pick a screenshot or poster. After uploading you get a file name that works in game."});
-        SITE_DEFAULTS.put("upload_button", new String[]{"上传", "Upload"});
-        SITE_DEFAULTS.put("upload_nickname_title", new String[]{"图片昵称", "Image nickname"});
-        SITE_DEFAULTS.put("result_heading", new String[]{"上传完成", "Upload complete"});
-        SITE_DEFAULTS.put("result_rename_title", new String[]{
-                "不满意这个名字？现在还能改", "Not happy with this name? You can still change it"});
-        SITE_DEFAULTS.put("result_rename_button", new String[]{"保存新名字", "Save new name"});
-        SITE_DEFAULTS.put("footer_note", new String[]{
-                "图片上传站 · 深色 Minecraft 风格 · 纯静态页面，不加载任何外部资源。",
-                "Image Upload · dark Minecraft style · fully self-contained, no external assets."});
-        SITE_DEFAULTS.put("footer_permission", new String[]{
-                "游戏内贴海报需要 ", "Posting in game requires the "});
-        SITE_DEFAULTS.put("footer_permission_suffix", new String[]{
-                " 权限，没有权限请找站长。",
-                " permission — ask your admin if you do not have it."});
-    }
-
-    /**
-     * 读出所有网站元素。
-     *
-     * @param english false 读 site.xxx，true 读 site.xxx_en
-     */
-    private static Map<String, String> readSite(Source cfg, boolean english) {
-        Map<String, String> out = new LinkedHashMap<>();
-        List<String> missing = new ArrayList<>();
-        for (Map.Entry<String, String[]> entry : SITE_DEFAULTS.entrySet()) {
-            String key = entry.getKey();
-            String fallback = entry.getValue()[english ? 1 : 0];
-            String raw;
-            if (english) {
-                // 英文留空 = 沿用中文，这样站长只需要填中文也能用
-                raw = cfg.getString("site." + key + "_en", "");
-                if (raw == null || raw.trim().isEmpty()) {
-                    raw = cfg.getString("site." + key, fallback);
-                }
-            } else {
-                raw = cfg.getString("site." + key, fallback);
-            }
-            if (raw == null || raw.isEmpty()) {
-                raw = fallback;
-                missing.add(key);
-            }
-            out.put(key, raw);
-        }
-        if (!missing.isEmpty()) {
-            // 这里不抛异常：少了文案也要能开站，用内置兜底即可
-            out.put("__missing__", String.join(",", missing));
-        }
-        return out;
-    }
-
-    /** 取某个网站元素的中文/英文值。 */
-    public String site(String key, boolean english) {
-        Map<String, String> table = english ? siteEn : siteZh;
-        String value = table.get(key);
-        if (value == null || value.isEmpty()) {
-            value = siteZh.get(key);
-        }
-        return value == null ? "" : value;
-    }
-
+    /** 从 Bukkit 配置构造（插件里用这个）。 */
     public static WebConfig from(FileConfiguration cfg) {
         return new WebConfig(of(cfg));
     }
@@ -242,6 +158,15 @@ public final class WebConfig {
     /** 直接从一个 Source 构造（测试用）。 */
     public static WebConfig from(Source src) {
         return new WebConfig(src);
+    }
+
+    /** 语言代码只允许字母数字和连字符，避免拿它去拼路径。 */
+    private static String normalizeLang(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "zh";
+        }
+        String value = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        return Messages.isValidLang(value) ? value : "zh";
     }
 
     /** 拼给玩家看的图片地址。有 public_base_url 就用它，否则按 host:port 推。 */

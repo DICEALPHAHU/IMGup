@@ -77,7 +77,10 @@ jar --create --file "$OUT_DIR/$JAR_NAME" -C "$OUT_DIR/classes" .
 
 echo "==> 校验产物"
 python3 - "$OUT_DIR/$JAR_NAME" <<'PY'
-import sys, zipfile
+import re
+import sys
+import zipfile
+
 jar = sys.argv[1]
 with zipfile.ZipFile(jar) as zf:
     names = zf.namelist()
@@ -87,17 +90,59 @@ with zipfile.ZipFile(jar) as zf:
                      "com/huhumc/imgup/WebServer.class",
                      "com/huhumc/imgup/UploadStore.class",
                      "com/huhumc/imgup/ImageTools.class",
+                     "com/huhumc/imgup/Messages.class",
                      # 网页资源必须打进去，否则插件起来了也没有页面
                      "web/index.html", "web/upload.html", "web/result.html",
-                     "web/app.css", "web/i18n.js"):
+                     "web/app.css", "web/i18n.js",
+                     # 语言文件也要进 jar，否则插件启动时没有可释放的默认文案
+                     "messages/zh.yml", "messages/en.yml"):
         if required not in names:
             sys.exit("产物里缺少 " + required)
+
     with zf.open("plugin.yml") as fh:
         head = fh.read(400).decode("utf-8", "replace")
     for key in ("name:", "version:", "main:", "api-version:"):
         if key not in head:
             sys.exit("plugin.yml 缺少 " + key)
-print("    plugin.yml / config.yml / 主类 都在，plugin.yml 头部正常")
+    print("    plugin.yml / config.yml / 主类 都在，plugin.yml 头部正常")
+
+    # 语言文件的两条硬性要求，等插件跑起来才发现就太晚了：
+    #   1. 键名不能含数字 —— 模板用 $site_xxx 占位，替换器遇到数字会截断
+    #      （曾把 $site_home_step1_title 只替换到 $site_home_step）
+    #   2. 各语言文件的键必须一致，缺的会回退到默认语言
+    tables = {}
+    for lang in ("zh", "en"):
+        name = "messages/" + lang + ".yml"
+        with zf.open(name) as fh:
+            text = fh.read().decode("utf-8")
+        keys = re.findall(r"^([A-Za-z][\w.]*):", text, re.M)
+        # 只有 site.* 会进模板占位符（$site_xxx），所以只有它们不能带数字。
+        # 其它键（index.step1Title 之类）是前端 JS 查表用的，带数字完全没问题。
+        bad = [k for k in keys if k.startswith("site.") and re.search(r"\d", k)]
+        if bad:
+            sys.exit(name + " 里的 site.* 键名不能含数字（模板替换会截断）：" + str(bad[:5]))
+        if not keys:
+            sys.exit(name + " 里一条文案都没有")
+        tables[lang] = set(keys)
+
+    only_zh = sorted(tables["zh"] - tables["en"])
+    only_en = sorted(tables["en"] - tables["zh"])
+    if only_zh or only_en:
+        sys.exit("语言文件键不一致：en 缺 " + str(only_zh[:5]) + "，zh 缺 " + str(only_en[:5]))
+    print("    语言文件：zh/en 各 " + str(len(tables["zh"]))
+          + " 条键，键名合法且完全一致")
+
+    # 模板里的 $site_xxx 占位符必须都能在语言文件里找到
+    missing = []
+    for page in ("index", "upload", "result"):
+        with zf.open("web/" + page + ".html") as fh:
+            html = fh.read().decode("utf-8")
+        for var in sorted(set(re.findall(r"\$site_([a-z_]+)", html))):
+            if "site." + var not in tables["zh"]:
+                missing.append(page + ".html 的 $site_" + var + " 没有对应的 site." + var)
+    if missing:
+        sys.exit("模板占位符在语言文件里找不到：" + "; ".join(missing[:5]))
+    print("    模板占位符都能在语言文件里找到")
 PY
 
 ls -la "$OUT_DIR/$JAR_NAME"

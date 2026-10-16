@@ -7,6 +7,7 @@ import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Locale;
 import java.util.logging.Level;
 
@@ -30,6 +31,7 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
     private Sessions sessions;
     private UploadStore store;
     private WebServer web;
+    private Messages messages;
 
     /** 图片最终目录：Images 插件的数据目录。 */
     private java.nio.file.Path imagesDir;
@@ -69,6 +71,7 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
         root.setTabCompleter(executor);
 
         reloadSettings();
+        loadMessages();
         startWeb();
 
         getLogger().info("ImgUp 已启用：玩家用 /imgup <上传码> 确认，然后到 "
@@ -95,6 +98,23 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
         this.sessions = new Sessions(6 * 3600_000L, webConfig.codeTtlMillis);
     }
 
+    /**
+     * 释放并读取语言文件。
+     *
+     * 第一次启动时把 jar 里自带的 messages/zh.yml、en.yml 写到
+     * plugins/ImgUp/messages/，之后站长改的就是磁盘上那份，不会被覆盖。
+     */
+    private void loadMessages() {
+        Messages.extractDefaults(getLogger(), resource -> {
+            if (getResource(resource) != null) {
+                saveResource(resource, false);   // false = 已存在就不覆盖
+            }
+        });
+        Path dir = getDataFolder().toPath().resolve(webConfig.messagesDir);
+        this.messages = new Messages(dir, webConfig.language);
+        this.messages.load(getLogger());
+    }
+
     /** 启动（或重启）内置网站。端口被占用等失败只记日志，不拖挂整个插件。 */
     void startWeb() {
         if (web != null) {
@@ -105,7 +125,7 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
             getLogger().info("config.yml 里 web.enabled = false，内置网站未启动");
             return;
         }
-        web = new WebServer(getLogger(), webConfig, store, sessions, this);
+        web = new WebServer(getLogger(), webConfig, store, sessions, messages, this);
         if (!web.start()) {
             getLogger().warning("网站没起来，但 /imgup 指令仍然可用（玩家确认了也没地方上传）");
         }
@@ -114,6 +134,7 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
     /** /imgup reload 用：重新读配置，网站跟着重启（端口可能变了）。 */
     void reloadAll() {
         reloadConfig();
+        loadMessages();
         startWeb();
     }
 
@@ -190,6 +211,10 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
 
     Sessions sessions() {
         return sessions;
+    }
+
+    Messages messages() {
+        return messages;
     }
 
     WebServer web() {

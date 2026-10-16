@@ -37,90 +37,18 @@ web:
   request_timeout_seconds: 60
 
 # ---------------------------------------------------------------------------
-# 网站上的文字元素
-#
-# ★ 这些就是页面上显示给玩家的文案，全部可以在这里改，不用碰 HTML。
-#
-# 支持中英双语。写作规则：
-#   site.xxx       = 中文（也就是默认语言）
-#   site.xxx_en    = 英文（留空或不写，英文界面就沿用中文）
-# 玩家在网页右上角切换语言，切到英文时读 _en 的值。
+# 语言
 # ---------------------------------------------------------------------------
-site:
-  # 浏览器标签页标题
-  title: "图片上传站"
-  title_en: "Image Upload"
+# 默认语言：决定玩家打开网页时看到哪一门语言，也决定某个键在其它语言文件里
+# 缺失时回退到哪门语言。必须在 messages/ 下有对应的文件（zh.yml / en.yml）。
+language: zh
 
-  # 左上角站名（每个页面顶栏都显示）
-  brand: "图片上传站"
-  brand_en: "Image Upload"
-
-  # 顶栏右侧那个链接的文字。默认指向站长后台。
-  nav_admin: "站长入口"
-  nav_admin_en: "Admin"
-
-  # ---------------- 首页：获取上传码 ----------------
-  home_heading: "上传海报"
-  home_heading_en: "Upload a poster"
-
-  home_lede: "先在网页上获取一个 8 位上传码，再进游戏输入 /imgup 你的上传码 完成确认，就可以上传图片了。"
-  home_lede_en: "Get an 8-character upload code here, then type /imgup <your code> in game to confirm. After that you can upload images."
-
-  home_step1_title: "第一步 · 获取上传码"
-  home_step1_title_en: "Step 1 · Get an upload code"
-
-  home_button: "获取上传码"
-  home_button_en: "Get upload code"
-
-  home_step2_title: "备用方式 · 手动输入上传码"
-  home_step2_title_en: "Fallback · enter the code manually"
-
-  # ---------------- 上传页 ----------------
-  upload_heading: "上传图片"
-  upload_heading_en: "Upload an image"
-
-  upload_lede: "选一张截图或海报，上传后会生成游戏内可用的图片名。"
-  upload_lede_en: "Pick a screenshot or poster. After uploading you get a file name that works in game."
-
-  upload_button: "上传"
-  upload_button_en: "Upload"
-
-  # 昵称输入框上面的标题
-  upload_nickname_title: "图片昵称"
-  upload_nickname_title_en: "Image nickname"
-
-  # ---------------- 结果页 ----------------
-  result_heading: "上传完成"
-  result_heading_en: "Upload complete"
-
-  # 改名区块的标题（只有待审核的图才显示这一块）
-  result_rename_title: "不满意这个名字？现在还能改"
-  result_rename_title_en: "Not happy with this name? You can still change it"
-
-  result_rename_button: "保存新名字"
-  result_rename_button_en: "Save new name"
-
-  # ---------------- 页脚 ----------------
-  footer_note: "图片上传站 · 深色 Minecraft 风格 · 纯静态页面，不加载任何外部资源。"
-  footer_note_en: "Image Upload · dark Minecraft style · fully self-contained, no external assets."
-
-  # 注意：这句话中间夹着一个指令名（页面上是高亮的 <code>），所以拆成前后两半。
-  # 拼接后是：<前>images.command.create<后>
-  footer_permission: "游戏内贴海报需要 "
-  footer_permission_en: "Posting in game requires the "
-
-  footer_permission_suffix: " 权限，没有权限请找站长。"
-  footer_permission_suffix_en: " permission — ask your admin if you do not have it."
-
-  # ---------------- 功能开关（关掉对应区块就不显示）----------------
-  # 是否显示「备用方式 · 手动输入上传码」那一块
-  show_manual_claim: true
-
-  # 是否允许玩家上传后改名
-  allow_rename: true
-
-  # 是否在页面上显示「复制文件名 / 复制指令」按钮
-  show_copy_buttons: true
+# 语言文件目录（相对于插件数据目录）。里面一个语言一个文件，文件名就是语言代码：
+#   plugins/ImgUp/messages/zh.yml
+#   plugins/ImgUp/messages/en.yml
+# 想加一门语言就复制一份改名（比如 jp.yml）并把它翻译成日文，
+# 玩家在网页右上角的语言开关里会自动多出这一项。
+messages_dir: "messages"
 
 # ---------------------------------------------------------------------------
 # 图片处理

@@ -391,27 +391,32 @@
     }
   };
 
-  /* ------------------------------------------- config.yml 里的网站元素 --
+  /* --------------------------------------------- 服务端注入的文案表 --
    *
-   * 页面上「站名 / 标题 / 引导语 / 页脚」这类元素全部来自 config.yml 的 site.*，
-   * 插件渲染页面时会把英文那套塞进 window.IMGUP_SITE_EN（键名形如 site.brand）。
+   * 页面上所有文字的唯一来源是 messages/<语言>.yml。插件渲染页面时会把
+   * **当前语言**的整张表塞进 window.IMGUP_MESSAGES（键名和 yml 里完全一致，
+   * 比如 site.brand、upload.errTooBig），语言代码放在 window.IMGUP_LANG。
    *
-   * 这里把它覆盖进字典：
-   *   · 英文：直接替换 site.* 键，于是切英文时就是配置里写的英文
-   *   · 中文：不走字典（引擎在中文下还原元素原文），而元素原文就是
-   *     服务端用 site.xxx 渲染进去的值 —— 两边同源，改一处生效两处
+   * 这里用它覆盖字典：
+   *   · 覆盖当前语言那一张表 —— 于是 yml 里改一句，页面立刻跟着变
+   *   · 同时用默认语言（window.IMGUP_DEFAULT）的表补齐缺的键
    *
-   * 没注入（比如直接用文件打开页面）就跳过，用字典自带的兜底值。
+   * 本文件里写死的字典是**离线兜底**：万一没注入（比如直接用浏览器打开
+   * 磁盘上的 html），页面仍然是完整可读的，不会出现键名。
    */
-  (function mergeSiteElements() {
-    var injected = window.IMGUP_SITE_EN;
+  (function applyInjectedMessages() {
+    var injected = window.IMGUP_MESSAGES;
+    var lang = window.IMGUP_LANG;
     if (!injected || typeof injected !== 'object') { return; }
-    Object.keys(injected).forEach(function (key) {
-      var value = injected[key];
-      if (typeof value !== 'string' || value === '') { return; }
-      DICT.en[key] = value;
-      // 英文缺省时沿用中文：这里不覆盖 DICT.zh，让服务端渲染的中文原文继续生效
-    });
+    if (typeof lang === 'string' && SUPPORTED.indexOf(lang) >= 0) {
+      DICT[lang] = DICT[lang] || {};
+      Object.keys(injected).forEach(function (key) {
+        var value = injected[key];
+        if (typeof value === 'string' && value !== '') {
+          DICT[lang][key] = value;
+        }
+      });
+    }
   })();
 
   /* ------------------------------------------------------------ 状态 -- */
@@ -560,6 +565,10 @@
 
   /* ------------------------------------------------------- 语言开关 -- */
 
+  /** 服务端有哪些语言文件（messages/*.yml），语言开关据此列出选项。 */
+  var AVAILABLE = [];
+  var DEFAULT_LANG = (typeof window.IMGUP_LANG === 'string' && window.IMGUP_LANG) || FALLBACK;
+
   function buildSwitcher() {
     var nav = document.querySelector('.topnav');
     if (!nav || nav.querySelector('.lang-switch')) { return; }
@@ -573,16 +582,73 @@
     label.textContent = DICT[FALLBACK]['common.langSwitch'];
     btn.appendChild(label);
     btn.addEventListener('click', function () {
-      setLang(lang === 'zh' ? 'en' : 'zh');
+      cycleLanguage(btn);
     });
     // 放在导航最左边：切语言是个「全局开关」，不该挤在末尾
     nav.insertBefore(btn, nav.firstChild);
+
+    // 问服务端有哪些语言可用（一个语言文件就是一个选项）
+    fetch('/api/languages', { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data && data.ok && data.available && data.available.length) {
+          AVAILABLE = data.available;
+          DEFAULT_LANG = data.default || DEFAULT_LANG;
+          updateSwitchLabel(label);
+        }
+      })
+      .catch(function () { /* 拿不到就退化成默认的两门语言 */ });
+  }
+
+  /** 按钮上写「切到哪门语言」：中文界面显示 English，英文界面显示 中文。 */
+  function updateSwitchLabel(label) {
+    var others = AVAILABLE.filter(function (code) { return code !== lang; });
+    if (!others.length) { return; }
+    var next = others[0];
+    label.textContent = LANGUAGE_NAMES[next] || next.toUpperCase();
+  }
+
+  /** 语言文件里约定好的语言自称，加语言时在这里补一行即可。 */
+  var LANGUAGE_NAMES = { zh: '中文', en: 'English', jp: '日本語', ja: '日本語', ru: 'Русский', ko: '한국어' };
+
+  /**
+   * 切到下一门语言：先让服务端记住（Set-Cookie），再带 ?lang= 刷新页面，
+   * 这样服务端会用新语言把整页重新渲染一遍 —— 首屏就是对的，不会闪。
+   */
+  function cycleLanguage(btn) {
+    var others = AVAILABLE.filter(function (code) { return code !== lang; });
+    if (!others.length) {
+      // 没拿到语言列表（接口失败）时退化成两门语言互切
+      setLang(lang === 'zh' ? 'en' : 'zh');
+      return;
+    }
+    if (others.length > 1) {
+      // 超过两门语言时让玩家选，避免「点好几下才轮到想要的」
+      var picked = window.prompt(others.map(function (c, i) {
+        return (i + 1) + '. ' + (LANGUAGE_NAMES[c] || c);
+      }).join('\n'), '1');
+      var index = parseInt(picked, 10);
+      if (!index || index < 1 || index > others.length) { return; }
+      switchTo(others[index - 1]);
+      return;
+    }
+    switchTo(others[0]);
+  }
+
+  function switchTo(code) {
+    fetch('/api/lang?lang=' + encodeURIComponent(code), { method: 'POST' })
+      .catch(function () { /* 记不住也没关系，下面的 ?lang= 仍然生效 */ })
+      .then(function () {
+        var url = new URL(window.location.href);
+        url.searchParams.set('lang', code);
+        window.location.replace(url.toString());
+      });
   }
 
   function persist(next) {
-    try { window.localStorage.setItem(STORAGE_KEY, next); } catch (e) { /* 隐私模式下忽略 */ }
-    // 同时写 cookie：服务端以后要用它渲染 <html lang>（现在只做记录，不参与逻辑）
-    document.cookie = COOKIE_KEY + '=' + next + ';path=/;max-age=31536000;samesite=lax';
+    // 语言选择以服务端 cookie 为准（/api/lang 负责写），这里只做本地冗余，
+    // 万一 cookie 被清了，下次仍能记住。
+    try { window.localStorage.setItem(STORAGE_KEY, next); } catch (e) { /* 隐私模式忽略 */ }
   }
 
   function setLang(next) {
