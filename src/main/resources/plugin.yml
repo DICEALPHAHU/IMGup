@@ -5,6 +5,11 @@ api-version: '1.21'
 authors: [ DICEALPHAHU ]
 description: 图片上传站：插件自带网站，玩家在网页上传图片、在游戏里贴海报
 website: https://github.com/DICEALPHAHU/IMGup
+# 软依赖：装了 Images 就一定要排在它后面加载。
+# 因为启用时要 getPlugin("Images").getDataFolder() 拿图片目录；如果 ImgUp 先加载，
+# 那一刻 Images 还没启用，代码会退回自己的 images/ 目录，于是上传的图片
+# `/image create` 永远找不到。没装 Images 时 ImgUp 仍然能正常启动。
+softdepend: [ 'Images' ]
 commands:
   imgup:
     description: 确认上传码 / 查看和审核玩家上传的图片

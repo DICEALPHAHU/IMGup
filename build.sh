@@ -114,6 +114,26 @@ with zipfile.ZipFile(jar) as zf:
             sys.exit("plugin.yml 缺少 " + key)
     print("    plugin.yml / config.yml / 主类 都在，plugin.yml 头部正常")
 
+    # 代码里 getPlugin("X") 拿到的插件，plugin.yml 必须 softdepend 它。
+    # 否则 Bukkit 可能让它先加载，那一刻 X 还没启用，getPlugin 返回 null，
+    # 代码就静默走了「没装这个插件」的分支 —— ImgUp 就因为漏了 Images 的
+    # softdepend，会把图片存到自己目录而不是 Images 的数据目录。
+    with open("src/main/java/com/github/dicealphahu/imgup/ImgUpPlugin.java",
+              encoding="utf-8") as fh:
+        main_src = fh.read()
+    wanted = set(re.findall(r'getPlugin\("([A-Za-z0-9_]+)"\)', main_src))
+    with open("src/main/resources/plugin.yml", encoding="utf-8") as fh:
+        yml = fh.read()
+    listed = set(re.findall(r"[\'\"]?([A-Za-z0-9_]+)[\'\"]?", 
+                           (re.search(r"^softdepend:(.*)$", yml, re.M) or
+                            re.search(r"$^", "")).group(1) if re.search(r"^softdepend:(.*)$", yml, re.M)
+                           else ""))
+    missing = sorted(wanted - listed)
+    if missing:
+        sys.exit("这些插件会被 getPlugin() 取用，但 plugin.yml 没有 softdepend，"
+                 "加载顺序没保证：" + ", ".join(missing))
+    print("    getPlugin() 取用的插件都声明了 softdepend（" + "/".join(sorted(wanted)) + "）")
+
     # 语言文件的两条硬性要求，等插件跑起来才发现就太晚了：
     #   1. 键名不能含数字 —— 模板用 $site_xxx 占位，替换器遇到数字会截断
     #      （曾把 $site_home_step1_title 只替换到 $site_home_step）
