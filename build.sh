@@ -185,7 +185,13 @@ with zipfile.ZipFile(jar) as zf:
         with zf.open("web/" + page + ".html") as fh:
             blob += fh.read().decode("utf-8")
     with zf.open("web/i18n.js") as fh:
-        blob += fh.read().decode("utf-8")
+        i18n_text = fh.read().decode("utf-8")
+    # i18n.js 里的兜底字典要**先摘掉**再扫 —— 字典条目自己不能证明自己「被用到」，
+    # 那正是死键的藏身处（common.brand、common.footerPerm* 都这么躲过去的）。
+    lines = i18n_text.split("\n")
+    start = next(i for i, l in enumerate(lines) if l.strip().startswith("var DICT = {"))
+    end = next(i for i in range(start + 1, len(lines)) if lines[i] == "  };")
+    blob += "\n".join(lines[:start] + lines[end + 1:])
     for src in glob.glob("src/main/java/**/*.java", recursive=True):
         with open(src, encoding="utf-8") as fh:
             blob += fh.read()
@@ -198,11 +204,45 @@ with zipfile.ZipFile(jar) as zf:
             return True
         return key in dynamic_err
 
+    # 反向：服务端会下发的 err.<code> 必须都在语言文件里声明。
+    # 缺一个，客户端 t() 就会把键名（err.xxx）直接显示给玩家。
+    missing_err = sorted(e for e in dynamic_err if e not in all_keys)
+    if missing_err:
+        sys.exit("服务端会下发这些错误键，但语言文件里没声明（玩家会看到键名）："
+                 + str(missing_err))
+
     dead_any = sorted(k for k in all_keys if not key_is_used(k))
     if dead_any:
         sys.exit("这些键声明了但代码里没有任何引用（改了不会生效，建议删掉）："
                  + str(dead_any))
     print("    语言文件里 " + str(len(all_keys)) + " 个键都在用，没有死键")
+
+    # i18n.js 的离线兜底字典必须和语言文件保持一致。
+    # 它本该是 yml 的镜像，手工维护会漂移 —— 曾经 30 个 site.* 键被放进 zh 段
+    # 且值是英文，en 段则完全没有，离线打开页面时中文界面会冒出英文。
+    def dict_section(text, name, nxt):
+        """取出字典某一段里的键名集合。"""
+        a = text.index(name + ": {")
+        b = text.index(nxt, a) if nxt else text.index("\n  };", a)
+        # 只关心键；每行形如   'site.brand': 'CustomImagesUp',
+        return {m for m in re.findall(r"^\s*'([\w.]+)':", text[a:b], re.M)}
+
+    zh_dict = dict_section(i18n_text, "zh", "en:")
+    en_dict = dict_section(i18n_text, "en", None)
+    want = {k for k in all_keys if not k.startswith("game.")}
+    problems = []
+    if set(zh_dict) != set(en_dict):
+        problems.append("中英两段的键不一样：多 "
+                        + str(sorted(set(zh_dict) - set(en_dict))[:5])
+                        + " 少 " + str(sorted(set(en_dict) - set(zh_dict))[:5]))
+    if want - set(zh_dict):
+        problems.append("语言文件里有但字典里缺：" + str(sorted(want - set(zh_dict))[:8]))
+    if set(zh_dict) - want:
+        problems.append("字典里有但语言文件里没有：" + str(sorted(set(zh_dict) - want)[:8]))
+    if problems:
+        sys.exit("i18n.js 兜底字典和语言文件不一致（离线打开页面会显示错语言或键名）："
+                 + "；".join(problems))
+    print("    i18n.js 离线兜底字典与语言文件一致（" + str(len(zh_dict)) + " 键）")
 
 
     # 版本号只能有一个来源（plugin.yml）。WebServer 里若写死版本号，

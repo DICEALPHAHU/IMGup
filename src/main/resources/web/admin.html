@@ -123,9 +123,14 @@
 
   /* 服务端回的是语言中立的 message_key，拿它查当前语言的文案 */
   function serverText(data, fallbackKey) {
-    if (data && data.message_key) { return t(data.message_key); }
+    // 查不到的键 t() 会原样返回键名，这里退回本地兜底
+    if (data && data.message_key) {
+      var resolved = t(data.message_key);
+      if (resolved && resolved !== data.message_key) { return resolved; }
+    }
+    if (fallbackKey) { return t(fallbackKey); }
     if (data && data.message) { return data.message; }
-    return fallbackKey ? t(fallbackKey) : '';
+    return '';
   }
 
   function req(method, url, body) {

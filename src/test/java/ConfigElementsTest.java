@@ -267,6 +267,22 @@ public final class ConfigElementsTest {
             System.out.println("  [!!]   这些引用取不到（页面会缺样式或脚本）：" + broken);
         }
 
+        // serverText 必须判断「解析结果是不是还等于键名」。
+        // 服务端下发的键如果语言文件里没声明，t() 会把键名原样返回 ——
+        // 曾经因此把 err.not_confirmed 直接显示给玩家。
+        System.out.println("\n=== 服务端下发的错误键要有兜底 ===");
+        for (String page : new String[]{"/", "/upload", "/result", "/admin"}) {
+            String html = fetch(base + page);
+            if (html.contains("resolved !== data.message_key")) {
+                ok++;
+                System.out.println("  [OK]   " + page + " 的 serverText 会退回本地兜底");
+            } else {
+                bad++;
+                System.out.println("  [!!]   " + page + " 的 serverText 缺兜底，"
+                        + "服务端键缺失时会把键名显示给玩家");
+            }
+        }
+
         // 没配备案号时，页脚不该多出一行空的「备案号：」
         System.out.println("\n=== 没配备案号时不显示这一行 ===");
         // 注入的文案表里本来就有 site.footer_icp 这个键，先剥掉 <script> 再查

@@ -150,12 +150,19 @@
 
   /* 服务端可能带 message_key（语言中立的键）+ message_params；拿不到就回退它给的中文。 */
   function serverText(data, fallbackKey, params) {
+    // 1) 服务端下发的键，语言文件里查得到就用它。
+    //    t() 对查不到的键会**把键名原样返回** —— 曾经因此把 err.not_confirmed
+    //    直接显示给玩家，所以这里必须判断「解析结果是不是还等于键名」。
     if (data && data.message_key) {
       var p = data.message_params || params || null;
-      return t(data.message_key, p);
+      var resolved = t(data.message_key, p);
+      if (resolved && resolved !== data.message_key) { return resolved; }
     }
+    // 2) 本地的兜底键（按当前语言）
+    if (fallbackKey) { return t(fallbackKey, params); }
+    // 3) 最后才用服务端给的现成文案（那是中文，优先级最低）
     if (data && data.message) { return data.message; }
-    return t(fallbackKey, params);
+    return '';
   }
 
   /* data 为服务端返回体（本地校验错误传 null），key 为兜底键。 */

@@ -212,7 +212,13 @@ public final class HttpSelfTest {
         check("CSS 类型正确", String.valueOf(css.contentType).contains("text/css"));
         Reply js = get("/static/i18n.js");
         check("i18n.js 200", js.status == 200, "拿到 " + js.status);
-        check("i18n.js 里有中英两张表", js.text().contains("DICT") && js.text().contains("'common.brand'"));
+        // 兜底字典是从语言文件生成的，中英两段都要有，且都在用同一批键
+        check("i18n.js 里有中英两张表",
+                js.text().contains("var DICT = {")
+                        && js.text().contains("zh: {")
+                        && js.text().contains("en: {")
+                        && js.text().contains("'site.brand': 'CustomImagesUp'"),
+                "兜底字典结构不对");
         Reply missing = get("/static/nope.js");
         check("不存在的资源 404", missing.status == 404, "拿到 " + missing.status);
     }
