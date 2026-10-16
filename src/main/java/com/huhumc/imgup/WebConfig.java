@@ -120,6 +120,12 @@ public final class WebConfig {
     /** 关掉后不显示复制文件名 / 复制指令按钮。 */
     public final boolean showCopyButtons;
 
+    /** 网页后台的管理密码。空字符串 = 后台不可用（登录一律失败）。 */
+    public final String adminPassword;
+
+    /** 关掉后 /admin 直接返回 404，连登录页都没有。 */
+    public final boolean adminEnabled;
+
     private WebConfig(Source cfg) {
         this.enabled = cfg.getBoolean("web.enabled", true);
         this.host = cfg.getString("web.host", "0.0.0.0");
@@ -148,6 +154,8 @@ public final class WebConfig {
         this.showManualClaim = cfg.getBoolean("site.show_manual_claim", true);
         this.allowRename = cfg.getBoolean("site.allow_rename", true);
         this.showCopyButtons = cfg.getBoolean("site.show_copy_buttons", true);
+        this.adminPassword = cfg.getString("web.admin_password", "").trim();
+        this.adminEnabled = cfg.getBoolean("web.admin_enabled", true);
     }
 
     /** 从 Bukkit 配置构造（插件里用这个）。 */

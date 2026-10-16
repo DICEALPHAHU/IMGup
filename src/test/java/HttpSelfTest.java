@@ -71,7 +71,9 @@ public final class HttpSelfTest {
                 .set("upload.max_upload_bytes", 5 * 1024 * 1024)
                 .set("upload.max_nickname_length", 32)
                 .set("site.brand", "图片上传站")
-                .set("site.brand_en", "Image Upload");
+                .set("site.brand_en", "Image Upload")
+                .set("web.admin_enabled", true)
+                .set("web.admin_password", "TESTPW123456");
         WebConfig config = WebConfig.from(stub);
 
         sessions = new Sessions(3600_000L, config.codeTtlMillis);
@@ -89,6 +91,16 @@ public final class HttpSelfTest {
             @Override
             public boolean isOnline(String player) {
                 return true;
+            }
+
+            @Override
+            public String serverMotd() {
+                return "ALPHAHU Minecraft JAVA 26.1 Server";
+            }
+
+            @Override
+            public String serverName() {
+                return "alphahu Server";
             }
         });
         if (!server.start()) {
@@ -113,6 +125,12 @@ public final class HttpSelfTest {
             testPathTraversalBlocked();
             testSiteElementsFromLanguageFile();
             testLanguageSwitch();
+            testAdminRequiresLogin();
+            testAdminLogin();
+            testAdminListAndFilter();
+            testAdminApproveRejectDelete();
+            testAdminApproveAll();
+            testAdminDisabled();
         } finally {
             server.stop();
         }
@@ -375,6 +393,192 @@ public final class HttpSelfTest {
         check("之后访问自动用英文", home.text().contains("Image Upload"));
     }
 
+    // ------------------------------------------------------------ 后台
+
+    private static void testAdminRequiresLogin() throws Exception {
+        section("后台：没登录一律 401");
+        Session anon = new Session();
+        check("列表要登录", anon.get("/admin/api/list").status == 401);
+        check("通过要登录", anon.postJson("/admin/api/approve", "{\"name\":\"x.png\"}").status == 401);
+        check("拒绝要登录", anon.postJson("/admin/api/reject", "{\"name\":\"x.png\"}").status == 401);
+        check("删除要登录", anon.postJson("/admin/api/delete", "{\"name\":\"x.png\"}").status == 401);
+        check("一键通过要登录", anon.postJson("/admin/api/approve-all", "{}").status == 401);
+        check("返回错误码 unauthorized",
+                "unauthorized".equals(Json.parseObject(
+                        anon.get("/admin/api/list").text()).get("error")));
+
+        Reply page = anon.get("/admin");
+        check("后台页面本身可以打开（未登录只显示登录框）", page.status == 200,
+                "拿到 " + page.status);
+        check("登录框在页面里", page.text().contains("id=\"loginForm\""));
+    }
+
+    private static void testAdminLogin() throws Exception {
+        section("后台：登录");
+        Session client = new Session();
+        Reply wrong = client.postJson("/admin/api/login", "{\"password\":\"nope\"}");
+        check("密码错返回 401", wrong.status == 401, "拿到 " + wrong.status);
+        check("错误码 bad_password",
+                "bad_password".equals(Json.parseObject(wrong.text()).get("error")));
+
+        Reply right = client.postJson("/admin/api/login", "{\"password\":\"TESTPW123456\"}");
+        check("密码对返回 200", right.status == 200, "拿到 " + right.status);
+        check("下发了后台 cookie", client.cookie("imgup_admin") != null);
+
+        check("登录后能看列表", client.get("/admin/api/list").status == 200);
+        Reply out = client.postJson("/admin/api/logout", "{}");
+        check("退出登录 200", out.status == 200);
+        check("退出后 cookie 被清掉", "".equals(client.cookie("imgup_admin"))
+                || client.cookie("imgup_admin") == null);
+    }
+
+    private static void testAdminListAndFilter() throws Exception {
+        section("后台：列表与筛选");
+        Session admin = adminSession();
+        String pendingName = uploadAsPending(admin, "Adm", "后台测试");
+
+        Reply all = admin.get("/admin/api/list?filter=all");
+        check("列表 200", all.status == 200, "拿到 " + all.status);
+        Map<String, Object> body = Json.parseObject(all.text());
+        check("有 items 数组", body.get("items") instanceof java.util.List);
+        check("有 counts 统计", body.get("counts") instanceof Map);
+        check("列表里有刚上传的图", all.text().contains(pendingName));
+
+        Reply pending = admin.get("/admin/api/list?filter=pending");
+        check("筛选待审核", pending.status == 200 && pending.text().contains(pendingName));
+        check("待审核里没有已发布的图",
+                !pending.text().contains("Steve-我的海报.png"));
+
+        Reply bad = admin.get("/admin/api/list?filter=../etc");
+        check("非法筛选值返回 400", bad.status == 400, "拿到 " + bad.status);
+    }
+
+    private static void testAdminApproveRejectDelete() throws Exception {
+        section("后台：通过 / 拒绝 / 删除");
+        Session admin = adminSession();
+
+        // 通过：文件应当从 pending 移到 Images 目录
+        String a = uploadAsPending(admin, "Adm", "待通过");
+        check("通过前在 pending 里", Files.exists(dataDir.resolve("pending").resolve(a)));
+        Reply approve = admin.postJson("/admin/api/approve",
+                "{\"name\":\"" + jsonEsc(a) + "\"}");
+        check("通过 200", approve.status == 200, "拿到 " + approve.status + " " + approve.text());
+        check("状态变成 published",
+                "published".equals(Json.parseObject(approve.text()).get("status")));
+        check("文件移到 Images 目录", Files.exists(imagesDir.resolve(a)));
+        check("pending 里没有残留", !Files.exists(dataDir.resolve("pending").resolve(a)));
+        check("通过后通知了玩家",
+                notified.stream().anyMatch(n -> n.contains(a)));
+
+        // 拒绝：文件移到 rejected/
+        String b = uploadAsPending(admin, "Adm", "待拒绝");
+        Reply reject = admin.postJson("/admin/api/reject",
+                "{\"name\":\"" + jsonEsc(b) + "\"}");
+        check("拒绝 200", reject.status == 200, "拿到 " + reject.status);
+        check("状态变成 rejected",
+                "rejected".equals(Json.parseObject(reject.text()).get("status")));
+        check("文件移到 rejected 目录", Files.exists(dataDir.resolve("rejected").resolve(b)));
+
+        // 删除：文件彻底消失
+        String c = uploadAsPending(admin, "Adm", "待删除");
+        Reply delete = admin.postJson("/admin/api/delete",
+                "{\"name\":\"" + jsonEsc(c) + "\"}");
+        check("删除 200", delete.status == 200, "拿到 " + delete.status);
+        check("文件彻底没了",
+                !Files.exists(dataDir.resolve("pending").resolve(c))
+                        && !Files.exists(imagesDir.resolve(c))
+                        && !Files.exists(dataDir.resolve("rejected").resolve(c)));
+
+        // 不存在的图
+        Reply missing = admin.postJson("/admin/api/approve",
+                "{\"name\":\"MeiYouZheZhang.png\"}");
+        check("不存在的图返回 404", missing.status == 404, "拿到 " + missing.status);
+
+        // 路径穿越的文件名必须被拒
+        Reply traversal = admin.postJson("/admin/api/delete",
+                "{\"name\":\"../../server.properties\"}");
+        check("路径穿越的文件名返回 400", traversal.status == 400,
+                "拿到 " + traversal.status);
+    }
+
+    private static void testAdminApproveAll() throws Exception {
+        section("后台：一键通过全部待审核");
+        Session admin = adminSession();
+        String one = uploadAsPending(admin, "Bulk", "批量一");
+        String two = uploadAsPending(admin, "Bulk", "批量二");
+
+        Reply reply = admin.postJson("/admin/api/approve-all", "{}");
+        check("一键通过 200", reply.status == 200, "拿到 " + reply.status);
+        check("两张都进了 Images 目录",
+                Files.exists(imagesDir.resolve(one)) && Files.exists(imagesDir.resolve(two)));
+        check("pending 已空",
+                !Files.exists(dataDir.resolve("pending").resolve(one))
+                        && !Files.exists(dataDir.resolve("pending").resolve(two)));
+    }
+
+    private static void testAdminDisabled() throws Exception {
+        section("后台：admin_enabled=false 时整体关闭");
+        int port = freePort();
+        String baseUrl = "http://127.0.0.1:" + port;
+        ConfigStub stub = new ConfigStub()
+                .set("web.enabled", true)
+                .set("web.host", "127.0.0.1")
+                .set("web.port", port)
+                .set("web.public_base_url", baseUrl)
+                .set("web.admin_enabled", false)
+                .set("web.admin_password", "TESTPW123456")
+                .set("language", "zh")
+                .set("messages_dir", "__messages__");
+        WebConfig off = WebConfig.from(stub);
+        Path offDir = Files.createTempDirectory("imgup-adminoff");
+        Messages offMessages = new Messages(offDir.resolve("messages"), "zh");
+        offMessages.loadTestFixtures(offDir.resolve("messages"));
+        WebServer offServer = new WebServer(java.util.logging.Logger.getLogger("imgup-off"),
+                off, new UploadStore(offDir.resolve("ImgUp"), offDir.resolve("Images")),
+                new Sessions(3600_000L, 300_000L), offMessages, new WebServer.GameBridge() {
+            public void notify(String player, String message) {
+            }
+
+            public boolean isOnline(String player) {
+                return false;
+            }
+
+            public String serverMotd() {
+                return "";
+            }
+
+            public String serverName() {
+                return "";
+            }
+        });
+        if (!offServer.start()) {
+            check("关闭后台的实例能起来", false);
+            return;
+        }
+        try {
+            // 注意：静态 get() 会自动拼上全局 base（那是主测试服务器的地址），
+            // 这里要打的是另一个端口，所以走独立的绝对 URL 请求。
+            Reply page = fetchAbsolute(baseUrl + "/admin");
+            check("后台页面 404", page.status == 404, "拿到 " + page.status);
+            Reply api = fetchAbsolute(baseUrl + "/admin/api/list");
+            check("后台接口 404", api.status == 404, "拿到 " + api.status);
+            Reply health = fetchAbsolute(baseUrl + "/api/health");
+            check("同一实例的其它接口照常可用（只关后台）", health.status == 200,
+                    "拿到 " + health.status);
+        } finally {
+            offServer.stop();
+        }
+    }
+
+    private static Session adminSession() throws Exception {
+        Session client = new Session();
+        Reply reply = client.postJson("/admin/api/login", "{\"password\":\"TESTPW123456\"}");
+        if (reply.status != 200) {
+            throw new IllegalStateException("后台登录失败：" + reply.status + " " + reply.text());
+        }
+        return client;
+    }
+
     // ------------------------------------------------------------ 工具
 
     /** 直接往 store 里塞一张「待审核」的图，用来测改名（避开 auto_publish）。 */
@@ -448,6 +652,14 @@ public final class HttpSelfTest {
 
     private static Reply get(String path) throws Exception {
         return get(path, null);
+    }
+
+    /** 直接请求一个完整 URL（用于临时起的第二个实例）。 */
+    private static Reply fetchAbsolute(String url) throws Exception {
+        HttpResponse<byte[]> response = HTTP.send(
+                HttpRequest.newBuilder(URI.create(url)).GET().build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        return new Reply(response);
     }
 
     private static Reply get(String path, Session session) throws Exception {

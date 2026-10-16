@@ -633,3 +633,93 @@ main.wrap { padding-bottom: 36px; }
 .lang-switch:active {
   transform: translateY(1px);
 }
+
+/* ---------------------------------------------------------- 网页后台 -- */
+/* 顶栏那个「管理员入口」打开的就是这一页：图片网格 + 每张的操作按钮 */
+
+.adm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.adm-card {
+  background: #1b1b22;
+  border: 2px solid #33333f;
+  display: flex;
+  flex-direction: column;
+}
+
+.adm-thumb {
+  width: 100%;
+  height: 150px;
+  object-fit: contain;
+  background: #12121a;
+  border-bottom: 2px solid #33333f;
+  image-rendering: pixelated;
+}
+
+.adm-body {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.adm-name {
+  font-size: 12px;
+  word-break: break-all;
+  color: #e8e8ef;
+}
+
+.adm-meta {
+  font-size: 12px;
+  margin: 0;
+}
+
+.adm-badge {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #4a4a5a;
+  color: #cfcfda;
+}
+
+.adm-badge.adm-pending {
+  border-color: #c9a227;
+  color: #e8c65a;
+}
+
+.adm-badge.adm-published {
+  border-color: #4a9c3a;
+  color: #7ed957;
+}
+
+.adm-badge.adm-rejected {
+  border-color: #a13b3b;
+  color: #e07070;
+}
+
+.adm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.btn-danger {
+  border-color: #a13b3b;
+  color: #e07070;
+}
+
+.btn-danger:hover,
+.btn-danger:focus-visible {
+  border-color: #e07070;
+  color: #ff9a9a;
+}
+
+.foot-copy {
+  font-size: 12px;
+  opacity: 0.72;
+}

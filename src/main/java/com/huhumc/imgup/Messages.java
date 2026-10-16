@@ -197,6 +197,21 @@ public final class Messages {
         return value == null ? key : value;
     }
 
+    /**
+     * 取文案并替换 {名字} 占位符。
+     *
+     * 页脚那两句要嵌 server.properties 里的 motd 和服务器名，所以文案里写
+     * {motd} / {server}，运行时把实时值填进去。
+     */
+    public String get(String lang, String key, String... pairs) {
+        String text = get(lang, key);
+        for (int i = 0; i + 1 < pairs.length; i += 2) {
+            text = text.replace("{" + pairs[i] + "}", pairs[i + 1] == null ? "" : pairs[i + 1]);
+        }
+        // 没提供值的占位符直接去掉，免得页面上露出 {motd} 这种东西
+        return text.replaceAll("\\{[a-zA-Z_][a-zA-Z0-9_]*\\}", "");
+    }
+
     private String lookup(String lang, String key) {
         if (lang == null) {
             return null;

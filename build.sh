@@ -93,7 +93,7 @@ with zipfile.ZipFile(jar) as zf:
                      "com/huhumc/imgup/Messages.class",
                      # 网页资源必须打进去，否则插件起来了也没有页面
                      "web/index.html", "web/upload.html", "web/result.html",
-                     "web/app.css", "web/i18n.js",
+                     "web/app.css", "web/i18n.js", "web/admin.html",
                      # 语言文件也要进 jar，否则插件启动时没有可释放的默认文案
                      "messages/zh.yml", "messages/en.yml"):
         if required not in names:
@@ -153,7 +153,7 @@ with zipfile.ZipFile(jar) as zf:
 
     # 模板里的 $site_xxx 占位符必须都能在语言文件里找到
     missing = []
-    for page in ("index", "upload", "result"):
+    for page in ("index", "upload", "result", "admin"):
         with zf.open("web/" + page + ".html") as fh:
             html = fh.read().decode("utf-8")
         for var in sorted(set(re.findall(r"\$site_([a-z_]+)", html))):
@@ -164,11 +164,22 @@ with zipfile.ZipFile(jar) as zf:
 
     # 反向检查：site.* 声明了就必须真的被某个模板用上。
     # 否则站长改了它页面却没变，会以为「配置不生效」—— 那种坑不如构建时拦掉。
+    # 三种写法都算「用到了」：
+    #   $msg_site_xxx          服务端渲染时替换（静态文字）
+    #   data-i18n="site.xxx"   前端引擎翻译（标签上的静态文字）
+    #   t('site.xxx')          前端 JS 里取（动态生成的文字）
+    #   site.xxx 出现在 i18n.js 的兜底字典里也算（离线打开页面时的兜底）
     used_site = set()
-    for page in ("index", "upload", "result"):
+    for page in ("index", "upload", "result", "admin"):
         with zf.open("web/" + page + ".html") as fh:
             html = fh.read().decode("utf-8")
         used_site |= {"site." + v for v in re.findall(r"\$msg_site_([A-Za-z0-9_]+)", html)}
+        used_site |= set(re.findall(r'data-i18n="(site\.[A-Za-z0-9_]+)"', html))
+        used_site |= set(re.findall(r"t\('(site\.[A-Za-z0-9_]+)'", html))
+    with zf.open("web/i18n.js") as fh:
+        i18n_js = fh.read().decode("utf-8")
+    used_site |= set(re.findall(r"'(site\.[A-Za-z0-9_]+)':", i18n_js))
+    used_site |= set(re.findall(r"t\('(site\.[A-Za-z0-9_]+)'", i18n_js))
     declared_site = {k for k in tables["zh"] if k.startswith("site.")}
     dead = sorted(declared_site - used_site)
     if dead:

@@ -42,17 +42,27 @@ public final class ConfigElementsTest {
                 "site.upload_heading", "site.upload_lede", "site.upload_button",
                 "site.upload_nickname_title", "site.upload_footer",
                 "site.nav_reupload", "site.nav_reverify",
-                "site.result_heading", "site.result_rename_title", "site.result_rename_button",
-                "site.footer_note", "site.footer_permission", "site.footer_permission_suffix",
-                "site.upload_footer", "site.nav_reupload", "site.nav_reverify");
-        // 这些键只在特定页面出现，跨页断言时跳过
+                "site.result_heading", "site.result_rename_title",
+                "site.result_rename_button",
+                // 这两个的值保留占位符，由 checkFooterServerInfo 单独验证，
+                // 所以不做 CUSTOM- 断言（见下面的 pageSpecific）
+                "site.footer_note", "site.footer_copyright");
+
         List<String> pageSpecific = List.of(
-                "site.nav_reverify", "site.nav_reupload", "site.upload_footer");
+                "site.nav_admin", "site.nav_reverify", "site.nav_reupload",
+                "site.upload_footer", "site.footer_note", "site.footer_copyright");
         List<String> lines = new ArrayList<>();
         lines.add("meta.name: \"中文\"");
         lines.add("meta.code: \"zh\"");
         for (String key : elementKeys) {
-            lines.add(key + ": \"CUSTOM-" + key.substring("site.".length()) + "\"");
+            if (key.equals("site.footer_note")) {
+                // 页脚要嵌 server.properties 的 motd，所以这里保留真实的占位符写法
+                lines.add(key + ": \"MOTD:{motd}\"");
+            } else if (key.equals("site.footer_copyright")) {
+                lines.add(key + ": \"SERVER:{server}\"");
+            } else {
+                lines.add(key + ": \"CUSTOM-" + key.substring("site.".length()) + "\"");
+            }
         }
         Files.writeString(msgDir.resolve("zh.yml"), String.join("\n", lines) + "\n",
                 StandardCharsets.UTF_8);
@@ -81,6 +91,14 @@ public final class ConfigElementsTest {
                     public boolean isOnline(String player) {
                         return false;
                     }
+
+                    public String serverMotd() {
+                        return "TEST MOTD";
+                    }
+
+                    public String serverName() {
+                        return "Test Server";
+                    }
                 });
         if (!server.start()) {
             System.out.println("服务器起不来");
@@ -92,21 +110,20 @@ public final class ConfigElementsTest {
             // 每个页面应该渲染出来的元素 —— 声明式，多一个少一个都会报出来。
             // 顶栏链接和页脚权限句本来就是页面专属，所以各页不同是正常的。
             checkPage(base + "/", "首页", List.of(
-                    "site.title", "site.brand", "site.nav_reupload",
+                    "site.title", "site.brand", "site.nav_admin",
                     "site.home_heading", "site.home_lede",
                     "site.home_first_step_title", "site.home_button",
-                    "site.home_second_step_title",
-                    "site.footer_note", "site.footer_permission",
-                    "site.footer_permission_suffix"));
+                    "site.home_second_step_title"));
             checkPage(base + "/upload", "上传页", List.of(
                     "site.title", "site.brand", "site.nav_reverify",
                     "site.upload_heading", "site.upload_lede", "site.upload_button",
-                    "site.upload_nickname_title", "site.upload_footer",
-                    "site.footer_note"));
+                    "site.upload_nickname_title", "site.upload_footer"));
+            checkFooterServerInfo(base);
+            checkAdminPage(base);
             checkPage(base + "/result", "结果页", List.of(
                     "site.title", "site.brand", "site.nav_reupload",
                     "site.result_heading", "site.result_rename_title",
-                    "site.result_rename_button", "site.footer_note"));
+                    "site.result_rename_button"));
         } finally {
             server.stop();
         }
@@ -115,6 +132,52 @@ public final class ConfigElementsTest {
         System.out.println("渲染出来的元素：" + ok + " 个，缺失：" + bad + " 个");
         if (bad > 0) {
             System.exit(1);
+        }
+    }
+
+    /**
+     * 页脚要显示服务器自己的 motd 和服务器名 —— 值来自 server.properties，
+     * 由插件的 GameBridge 实时提供，不是写死在文案里的。
+     */
+    private static void checkFooterServerInfo(String base) throws Exception {
+        System.out.println("\n=== 页脚嵌服务器信息 ===");
+        for (String path : new String[]{"/", "/upload", "/result", "/admin"}) {
+            String html = fetch(base + path)
+                    .replaceAll("(?s)<script>window\\.IMGUP_.*?</script>", "");
+            boolean motd = html.contains("TEST MOTD");
+            boolean server = html.contains("Test Server");
+            if (motd && server) {
+                ok++;
+                System.out.println("  [OK]   " + path + " 页脚有 motd 和服务器名");
+            } else {
+                bad++;
+                System.out.println("  [!!]   " + path + " 页脚缺 "
+                        + (motd ? "" : "motd ") + (server ? "" : "服务器名"));
+            }
+        }
+        // 文案里的 {motd} / {server} 占位符必须被替换掉，不能在页面上露出来
+        String home = fetch(base + "/").replaceAll("(?s)<script>window\\.IMGUP_.*?</script>", "");
+        if (home.contains("{motd}") || home.contains("{server}")) {
+            bad++;
+            System.out.println("  [!!]   页面上还露着 {motd} / {server} 占位符");
+        } else {
+            ok++;
+            System.out.println("  [OK]   占位符都被替换掉了");
+        }
+    }
+
+    /** 后台页面必须能打开（未登录时显示登录框）。 */
+    private static void checkAdminPage(String base) throws Exception {
+        System.out.println("\n=== 后台页面 ===");
+        String html = fetch(base + "/admin");
+        boolean login = html.contains("id=\"loginForm\"");
+        boolean list = html.contains("/admin/api/list");
+        if (login && list) {
+            ok++;
+            System.out.println("  [OK]   /admin 能打开，含登录框和列表逻辑");
+        } else {
+            bad++;
+            System.out.println("  [!!]   /admin 页面不对（登录框=" + login + "，列表=" + list + "）");
         }
     }
 

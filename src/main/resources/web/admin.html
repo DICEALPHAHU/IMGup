@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title data-i18n="site.admin_heading">图片管理 · CustomImages</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/i18n.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true">🖼</span>
+      <span class="brand-text" data-i18n="site.brand">$msg_site_brand</span>
+    </a>
+    <nav class="topnav">
+      <a href="/" data-i18n="common.backHome">🏠 返回首页</a>
+      <button class="lang-switch" type="button" id="logoutBtn"
+              data-i18n="site.admin_logout_button" hidden>退出登录</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="page-head">
+    <h1 class="page-title">
+      <span class="icon" aria-hidden="true">🗂</span>
+      <span data-i18n="site.admin_heading">图片管理</span>
+    </h1>
+    <p class="lede" data-i18n="site.admin_lede">这里可以查看、通过、拒绝和删除玩家上传的所有图片。</p>
+  </div>
+
+  <!-- 未登录：只显示登录卡片 -->
+  <section class="panel" id="loginCard">
+    <h2 class="panel-title" data-i18n="site.admin_login_title">管理员登录</h2>
+    <p class="muted" data-i18n="site.admin_login_hint">输入 config.yml 里 web.admin_password 设置的密码。</p>
+    <form id="loginForm" novalidate>
+      <div class="field">
+        <label for="pw" data-i18n="site.admin_password_label">管理密码</label>
+        <input class="input" type="password" id="pw" name="password"
+               autocomplete="current-password" enterkeyhint="go" required>
+      </div>
+      <div class="alert alert-error hidden" id="loginMsg" role="alert"></div>
+      <button class="btn btn-primary btn-block" type="submit" id="loginBtn"
+              data-i18n="site.admin_login_button">登录</button>
+    </form>
+  </section>
+
+  <!-- 已登录：统计 + 筛选 + 图片列表 -->
+  <section id="dash" hidden>
+
+    <p class="muted" id="stats"></p>
+
+    <div class="tabs" id="tabs">
+      <button class="tab is-active" type="button" data-filter="all">
+        <span data-i18n="site.admin_filter_all">全部</span> <span class="tab-n">0</span></button>
+      <button class="tab" type="button" data-filter="pending">
+        <span data-i18n="site.admin_filter_pending">待审核</span> <span class="tab-n">0</span></button>
+      <button class="tab" type="button" data-filter="published">
+        <span data-i18n="site.admin_filter_published">已发布</span> <span class="tab-n">0</span></button>
+      <button class="tab" type="button" data-filter="rejected">
+        <span data-i18n="site.admin_filter_rejected">已拒绝</span> <span class="tab-n">0</span></button>
+      <button class="btn btn-sm" type="button" id="bulkBtn"
+              data-i18n="site.admin_bulk_approve">全部通过</button>
+    </div>
+
+    <div class="alert alert-error hidden" id="listMsg" role="alert"></div>
+    <p class="loading" id="listLoading">加载中…</p>
+
+    <div class="adm-grid" id="grid"></div>
+
+    <p class="muted" id="empty" hidden data-i18n="site.admin_empty">还没有任何图片。</p>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p data-i18n="site.footer_note">$msg_site_footer_note</p>
+    <p class="foot-copy" data-i18n="site.footer_copyright">$msg_site_footer_copyright</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var t = window.IMGUP_I18N.t;
+  var STATUS_KEY = {
+    pending: 'site.admin_filter_pending',
+    published: 'site.admin_filter_published',
+    rejected: 'site.admin_filter_rejected'
+  };
+
+  var loginCard = document.getElementById('loginCard');
+  var dash = document.getElementById('dash');
+  var logoutBtn = document.getElementById('logoutBtn');
+  var loginForm = document.getElementById('loginForm');
+  var loginBtn = document.getElementById('loginBtn');
+  var loginMsg = document.getElementById('loginMsg');
+  var pw = document.getElementById('pw');
+  var stats = document.getElementById('stats');
+  var grid = document.getElementById('grid');
+  var empty = document.getElementById('empty');
+  var listLoading = document.getElementById('listLoading');
+  var listMsg = document.getElementById('listMsg');
+  var bulkBtn = document.getElementById('bulkBtn');
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+
+  var state = { filter: 'all', items: [], counts: {} };
+
+  function show(el) { el.hidden = false; }
+  function hide(el) { el.hidden = true; }
+
+  function setMsg(el, text) {
+    if (!text) { el.textContent = ''; el.classList.add('hidden'); return; }
+    el.textContent = text;
+    el.classList.remove('hidden');
+  }
+
+  /* 服务端回的是语言中立的 message_key，拿它查当前语言的文案 */
+  function serverText(data, fallbackKey) {
+    if (data && data.message_key) { return t(data.message_key); }
+    if (data && data.message) { return data.message; }
+    return fallbackKey ? t(fallbackKey) : '';
+  }
+
+  function req(method, url, body) {
+    var opts = { method: method, headers: { 'Accept': 'application/json' } };
+    if (body !== undefined) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    return fetch(url, opts).then(function (r) {
+      return r.json().catch(function () { return {}; })
+        .then(function (data) { return { status: r.status, ok: r.ok, data: data }; });
+    });
+  }
+
+  /* ---------------------------------------------------------- 登录 */
+
+  function checkAuth() {
+    req('GET', '/admin/api/list?filter=all').then(function (r) {
+      if (r.status === 401) { showLogin(); return; }
+      showDash();
+      applyPayload(r.data);
+    }).catch(function () {
+      showLogin();
+    });
+  }
+
+  function showLogin() {
+    show(loginCard);
+    hide(dash);
+    hide(logoutBtn);
+  }
+
+  function showDash() {
+    hide(loginCard);
+    show(dash);
+    show(logoutBtn);
+  }
+
+  loginForm.addEventListener('submit', function (event) {
+    event.preventDefault();
+    var value = pw.value;
+    if (!value) { setMsg(loginMsg, t('site.admin_password_label')); return; }
+    loginBtn.disabled = true;
+    setMsg(loginMsg, '');
+    req('POST', '/admin/api/login', { password: value }).then(function (r) {
+      loginBtn.disabled = false;
+      if (r.ok && r.data && r.data.ok) {
+        pw.value = '';
+        showDash();
+        loadList();
+        return;
+      }
+      setMsg(loginMsg, serverText(r.data, 'err.bad_password'));
+    }).catch(function () {
+      loginBtn.disabled = false;
+      setMsg(loginMsg, t('common.netError'));
+    });
+  });
+
+  logoutBtn.addEventListener('click', function () {
+    req('POST', '/admin/api/logout', {}).finally(function () {
+      state.items = [];
+      render();
+      showLogin();
+    });
+  });
+
+  /* ---------------------------------------------------------- 列表 */
+
+  function loadList() {
+    show(listLoading);
+    setMsg(listMsg, '');
+    req('GET', '/admin/api/list?filter=' + encodeURIComponent(state.filter))
+      .then(function (r) {
+        hide(listLoading);
+        if (r.status === 401) { showLogin(); return; }
+        if (!r.ok) { setMsg(listMsg, serverText(r.data, 'err.internal')); return; }
+        applyPayload(r.data);
+      })
+      .catch(function () {
+        hide(listLoading);
+        setMsg(listMsg, t('common.netError'));
+      });
+  }
+
+  function applyPayload(data) {
+    state.items = (data && data.items) || [];
+    state.counts = (data && data.counts) || {};
+    render();
+  }
+
+  function render() {
+    var counts = state.counts;
+    stats.textContent = t('site.admin_stats', {
+      total: counts.total || 0,
+      pending: counts.pending || 0,
+      published: counts.published || 0,
+      rejected: counts.rejected || 0
+    });
+
+    tabs.forEach(function (tab) {
+      var key = tab.getAttribute('data-filter');
+      tab.classList.toggle('is-active', key === state.filter);
+      var badge = tab.querySelector('.tab-n');
+      if (badge) {
+        var n = key === 'all' ? (counts.total || 0) : (counts[key] || 0);
+        badge.textContent = n;
+      }
+    });
+
+    grid.innerHTML = '';
+    empty.hidden = state.items.length > 0;
+
+    state.items.forEach(function (item) {
+      grid.appendChild(card(item));
+    });
+  }
+
+  /* ------------------------------------------------------ 单张卡片 */
+
+  function card(item) {
+    var box = document.createElement('div');
+    box.className = 'adm-card';
+
+    var img = document.createElement('img');
+    img.className = 'adm-thumb';
+    img.loading = 'lazy';
+    img.src = item.url || ('/preview/' + encodeURIComponent(item.name));
+    img.alt = item.name;
+    box.appendChild(img);
+
+    var body = document.createElement('div');
+    body.className = 'adm-body';
+
+    var name = document.createElement('code');
+    name.className = 'adm-name';
+    name.textContent = item.name;
+    body.appendChild(name);
+
+    var meta = document.createElement('p');
+    meta.className = 'adm-meta muted';
+    meta.textContent = (item.player || '?') + ' · ' + fmtSize(item.bytes)
+      + ' · ' + item.width + 'x' + item.height;
+    body.appendChild(meta);
+
+    var badge = document.createElement('span');
+    var statusKey = STATUS_KEY[item.status];
+    badge.className = 'adm-badge adm-' + item.status;
+    badge.textContent = statusKey ? t(statusKey) : item.status;
+    body.appendChild(badge);
+
+    var actions = document.createElement('div');
+    actions.className = 'adm-actions';
+
+    if (item.status !== 'published') {
+      actions.appendChild(button(t('site.admin_approve'), 'btn-primary',
+        function () { act('approve', item.name, this); }));
+    }
+    if (item.status !== 'rejected') {
+      actions.appendChild(button(t('site.admin_reject'), 'btn',
+        function () { act('reject', item.name, this); }));
+    }
+    actions.appendChild(button(t('site.admin_delete'), 'btn btn-danger',
+      function () { act('delete', item.name, this); }));
+    body.appendChild(actions);
+
+    box.appendChild(body);
+    return box;
+  }
+
+  function button(label, cls, onClick) {
+    var el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'btn btn-sm ' + cls;
+    el.textContent = label;
+    el.addEventListener('click', onClick);
+    return el;
+  }
+
+  function act(action, name, el) {
+    if (action === 'delete' && !window.confirm(name + ' — ' + t('site.admin_delete') + '?')) {
+      return;
+    }
+    el.disabled = true;
+    req('POST', '/admin/api/' + action, { name: name }).then(function (r) {
+      el.disabled = false;
+      if (r.status === 401) { showLogin(); return; }
+      if (!r.ok) { setMsg(listMsg, serverText(r.data, 'err.internal')); return; }
+      loadList();
+    }).catch(function () {
+      el.disabled = false;
+      setMsg(listMsg, t('common.netError'));
+    });
+  }
+
+  bulkBtn.addEventListener('click', function () {
+    bulkBtn.disabled = true;
+    req('POST', '/admin/api/approve-all', {}).then(function (r) {
+      bulkBtn.disabled = false;
+      if (r.status === 401) { showLogin(); return; }
+      if (!r.ok) { setMsg(listMsg, serverText(r.data, 'err.internal')); return; }
+      loadList();
+    }).catch(function () {
+      bulkBtn.disabled = false;
+      setMsg(listMsg, t('common.netError'));
+    });
+  });
+
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      state.filter = tab.getAttribute('data-filter') || 'all';
+      loadList();
+    });
+  });
+
+  function fmtSize(bytes) {
+    var n = Number(bytes) || 0;
+    if (n < 1024) { return n + ' B'; }
+    if (n < 1024 * 1024) { return (n / 1024).toFixed(1) + ' KB'; }
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  /* 切语言时重画（服务端文案在页面上由引擎还原，这里只管 JS 生成的） */
+  window.addEventListener('imgup:languagechange', function () {
+    render();
+    setMsg(loginMsg, loginMsg.classList.contains('hidden') ? '' : loginMsg.textContent);
+    bulkBtn.textContent = t('site.admin_bulk_approve');
+  });
+
+  checkAuth();
+})();
+</script>
+
+</body>
+</html>

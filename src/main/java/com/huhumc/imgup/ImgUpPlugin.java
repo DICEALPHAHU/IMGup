@@ -71,6 +71,7 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
         root.setTabCompleter(executor);
 
         reloadSettings();
+        ensureAdminPassword();
         loadMessages();
         startWeb();
 
@@ -96,6 +97,39 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
     private void reloadSettings() {
         this.webConfig = WebConfig.from(getConfig());
         this.sessions = new Sessions(6 * 3600_000L, webConfig.codeTtlMillis);
+    }
+
+    /**
+     * 确保网页后台有密码。
+     *
+     * 站长不可能自己想一个随机密码再手抄进 config.yml，所以第一次启动时生成一个
+     * 写回配置，并在控制台/日志里打印出来 —— 之后他随时可以去 config.yml 改。
+     */
+    private void ensureAdminPassword() {
+        if (!webConfig.adminEnabled || !webConfig.adminPassword.isEmpty()) {
+            return;
+        }
+        String generated = randomPassword();
+        getConfig().set("web.admin_password", generated);
+        saveConfig();
+        // 重新读一遍，让 webConfig 立刻带上新密码
+        this.webConfig = WebConfig.from(getConfig());
+        getLogger().warning("========================================================");
+        getLogger().warning(" 网页后台已生成管理密码：" + generated);
+        getLogger().warning(" 打开 " + webConfig.base() + "/admin 就能用；");
+        getLogger().warning(" 想改的话编辑 plugins/ImgUp/config.yml 的 web.admin_password");
+        getLogger().warning("========================================================");
+    }
+
+    private static String randomPassword() {
+        // 去掉容易看错的字符，站长可能要手抄
+        final String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        StringBuilder sb = new StringBuilder(12);
+        for (int i = 0; i < 12; i++) {
+            sb.append(alphabet.charAt(random.nextInt(alphabet.length())));
+        }
+        return sb.toString();
     }
 
     /**
@@ -165,6 +199,30 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
             return;
         }
         player.sendMessage(ChatColor.GREEN + "[图片上传] " + ChatColor.WHITE + message);
+    }
+
+    /**
+     * server.properties 里的 motd，页脚要显示它。
+     *
+     * 用 Bukkit 的实时值而不是自己去读文件：站长改了 server.properties 重启后
+     * 这里立刻就是新值，不用管文件在哪、也不用解析 properties 格式。
+     */
+    @Override
+    public String serverMotd() {
+        try {
+            return getServer().getMotd();
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
+    @Override
+    public String serverName() {
+        try {
+            return getServer().getName();
+        } catch (RuntimeException e) {
+            return "";
+        }
     }
 
     @Override

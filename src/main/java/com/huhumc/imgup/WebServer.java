@@ -44,10 +44,17 @@ public final class WebServer {
 
         /** 玩家是否在线（用于后台列表里显示状态）。 */
         boolean isOnline(String player);
+
+        /** 服务器 motd（来自 server.properties 的 motd）。 */
+        String serverMotd();
+
+        /** 服务器名（来自 server.properties 的 server-name）。 */
+        String serverName();
     }
 
     private static final String COOKIE_SESSION = "imgup_sid";
     private static final String COOKIE_LANG = "imgup_lang";
+    private static final String COOKIE_ADMIN = "imgup_admin";
 
     private final Logger log;
     private final WebConfig config;
@@ -58,6 +65,16 @@ public final class WebServer {
 
     /** 每个 IP 的取码记录，用于限流。 */
     private final Map<String, List<Long>> codeHits = new LinkedHashMap<>();
+
+    /**
+     * 后台登录会话：token -> 过期时间。
+     *
+     * 只在内存里，重启服务端就要重新登录 —— 管理员本来就在服务器边上，
+     * 这个取舍换来的是「不落盘、没有额外凭据文件」。
+     */
+    private final Map<String, Long> adminTokens = new LinkedHashMap<>();
+
+    private static final long ADMIN_TTL_MILLIS = 12 * 3600_000L;
 
     private HttpServer server;
     private ExecutorService executor;
@@ -203,6 +220,12 @@ public final class WebServer {
         }
         if (path.equals("/api/lang")) {
             return apiLang(exchange);
+        }
+        if (path.equals("/admin") || path.equals("/admin/")) {
+            return serveAdminPage(exchange);
+        }
+        if (path.startsWith("/admin/api/")) {
+            return adminApi(exchange, path.substring("/admin/api/".length()));
         }
         if (path.equals("/api/languages")) {
             return apiLanguages(exchange);
@@ -544,6 +567,218 @@ public final class WebServer {
         }
     }
 
+    // ------------------------------------------------------------ 后台
+    //
+    // 审核做在网页上（管理员入口），因为站长要「管理 image 的所有图片」——
+    // 光靠游戏内指令翻页看列表不方便。游戏内的 /imgup list|ok|no 也保留着，
+    // 两种方式改的是同一份数据。
+
+    private int serveAdminPage(HttpExchange exchange) throws IOException {
+        if (!config.adminEnabled) {
+            return sendJson(exchange, 404, error("not_found", 404, "后台已关闭", null));
+        }
+        String html = Resources.readText("web/admin.html");
+        if (html == null) {
+            return sendJson(exchange, 500, error("template_missing", 500, "后台页面缺失", null));
+        }
+        return serveRenderedPage(exchange, html, "admin");
+    }
+
+    /** /admin/api/<动作> */
+    private int adminApi(HttpExchange exchange, String action) throws IOException {
+        if (!config.adminEnabled) {
+            return sendJson(exchange, 404, error("not_found", 404, "后台已关闭", null));
+        }
+        // 登录接口不需要已登录
+        if (action.equals("login")) {
+            return adminLogin(exchange);
+        }
+        if (!checkAdmin(exchange)) {
+            return sendJson(exchange, 401, error("unauthorized", 401, "请先登录", null));
+        }
+        return switch (action) {
+            case "logout" -> adminLogout(exchange);
+            case "list" -> adminList(exchange);
+            case "approve" -> adminSetStatus(exchange, "approve");
+            case "reject" -> adminSetStatus(exchange, "reject");
+            case "delete" -> adminDelete(exchange);
+            case "approve-all" -> adminApproveAll(exchange);
+            default -> sendJson(exchange, 404, error("not_found", 404, "没有这个后台接口", null));
+        };
+    }
+
+    private int adminLogin(HttpExchange exchange) throws IOException {
+        if (config.adminPassword.isEmpty()) {
+            // 没设密码就不给登录，避免空密码直接进后台
+            return sendJson(exchange, 401, error("bad_password", 401,
+                    "后台没有设置密码，请在 config.yml 里填 web.admin_password", null));
+        }
+        String given = Json.string(readJson(exchange), "password");
+        if (!constantTimeEquals(given, config.adminPassword)) {
+            log.warning("后台登录失败，来自 " + remoteIp(exchange));
+            return sendJson(exchange, 401, error("bad_password", 401, "密码不对", null));
+        }
+        String token = newToken();
+        long expiresAt = System.currentTimeMillis() + ADMIN_TTL_MILLIS;
+        synchronized (adminTokens) {
+            adminTokens.put(token, expiresAt);
+            adminTokens.entrySet().removeIf(e -> e.getValue() < System.currentTimeMillis());
+        }
+        log.info("后台登录成功，来自 " + remoteIp(exchange));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", true);
+        return sendJson(exchange, 200, body,
+                List.of(cookie(COOKIE_ADMIN, token, (int) (ADMIN_TTL_MILLIS / 1000L))));
+    }
+
+    private int adminLogout(HttpExchange exchange) throws IOException {
+        String token = cookieValue(exchange, COOKIE_ADMIN);
+        if (token != null) {
+            synchronized (adminTokens) {
+                adminTokens.remove(token);
+            }
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", true);
+        // Max-Age=0 让浏览器立刻丢掉这个 cookie
+        return sendJson(exchange, 200, body, List.of(cookie(COOKIE_ADMIN, "", 0)));
+    }
+
+    /** 看所有图片（可按状态筛），带统计数字给前端画 tab 角标。 */
+    private int adminList(HttpExchange exchange) throws IOException {
+        String filter = queryParam(exchange, "filter");
+        if (filter.isEmpty() || filter.equals("all")) {
+            filter = null;
+        } else if (!UploadStore.STATUS_PENDING.equals(filter)
+                && !UploadStore.STATUS_PUBLISHED.equals(filter)
+                && !UploadStore.STATUS_REJECTED.equals(filter)) {
+            return sendJson(exchange, 400, error("bad_request", 400, "筛选值不对", null));
+        }
+        List<Object> items = new ArrayList<>();
+        for (UploadStore.Item item : store.byStatus(filter)) {
+            items.add(item.toJson(config));
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", true);
+        body.put("items", items);
+        body.put("counts", store.counts());
+        return sendJson(exchange, 200, body);
+    }
+
+    private int adminSetStatus(HttpExchange exchange, String action) throws IOException {
+        String name = Json.string(readJson(exchange), "name");
+        if (!Texts.isSafeFileName(name, config.maxNameLength)) {
+            return sendJson(exchange, 400, error("bad_name", 400, "文件名不合法", null));
+        }
+        UploadStore.Item item = store.get(name);
+        if (item == null) {
+            return sendJson(exchange, 404, error("not_found", 404, "找不到这张图片", null));
+        }
+        try {
+            UploadStore.Item done;
+            if (action.equals("approve")) {
+                done = store.approve(name);
+                notifyPlayer(done.player, "你的图片「" + done.name + "」审核通过了，可以在游戏里贴了");
+            } else {
+                done = store.reject(name, "");
+                notifyPlayer(done.player, "你的图片「" + done.name + "」没有通过审核");
+            }
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("ok", true);
+            body.put("name", done.name);
+            body.put("status", done.status);
+            return sendJson(exchange, 200, body);
+        } catch (IOException e) {
+            log.log(Level.WARNING, "后台操作失败 " + action + " " + name, e);
+            return sendJson(exchange, 500, error("storage_error", 500,
+                    "操作失败：" + e.getMessage(), null));
+        }
+    }
+
+    private int adminDelete(HttpExchange exchange) throws IOException {
+        String name = Json.string(readJson(exchange), "name");
+        if (!Texts.isSafeFileName(name, config.maxNameLength)) {
+            return sendJson(exchange, 400, error("bad_name", 400, "文件名不合法", null));
+        }
+        boolean removed = store.delete(name);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", removed);
+        if (!removed) {
+            body.put("message", "找不到这张图片");
+            body.put("message_key", "err.not_found");
+            return sendJson(exchange, 404, body);
+        }
+        return sendJson(exchange, 200, body);
+    }
+
+    /** 一键通过所有待审核的图。 */
+    private int adminApproveAll(HttpExchange exchange) throws IOException {
+        List<String> approved = new ArrayList<>();
+        List<String> failed = new ArrayList<>();
+        for (UploadStore.Item item : store.byStatus(UploadStore.STATUS_PENDING)) {
+            try {
+                store.approve(item.name);
+                approved.add(item.name);
+                notifyPlayer(item.player,
+                        "你的图片「" + item.name + "」审核通过了，可以在游戏里贴了");
+            } catch (IOException e) {
+                failed.add(item.name);
+            }
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", true);
+        body.put("approved", approved);
+        body.put("failed", failed);
+        return sendJson(exchange, 200, body);
+    }
+
+    /** 已登录且在有效期内？ */
+    private boolean checkAdmin(HttpExchange exchange) {
+        String token = cookieValue(exchange, COOKIE_ADMIN);
+        if (token == null || token.isEmpty()) {
+            return false;
+        }
+        synchronized (adminTokens) {
+            Long expiresAt = adminTokens.get(token);
+            if (expiresAt == null) {
+                return false;
+            }
+            if (expiresAt < System.currentTimeMillis()) {
+                adminTokens.remove(token);
+                return false;
+            }
+            return true;
+        }
+    }
+
+    /**
+     * 常数时间比较，避免根据响应时间逐字符猜密码。
+     * 长度不同也走完整循环，只在最后返回结果。
+     */
+    private static boolean constantTimeEquals(String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        byte[] left = a.getBytes(StandardCharsets.UTF_8);
+        byte[] right = b.getBytes(StandardCharsets.UTF_8);
+        int diff = left.length ^ right.length;
+        for (int i = 0; i < left.length; i++) {
+            diff |= left[i] ^ right[i % Math.max(1, right.length)];
+        }
+        return diff == 0;
+    }
+
+    private static String newToken() {
+        byte[] raw = new byte[24];
+        new java.security.SecureRandom().nextBytes(raw);
+        StringBuilder sb = new StringBuilder(raw.length * 2);
+        for (byte b : raw) {
+            sb.append(Character.forDigit((b >> 4) & 0x0F, 16));
+            sb.append(Character.forDigit(b & 0x0F, 16));
+        }
+        return sb.toString();
+    }
+
     // -------------------------------------------------------- 文件服务
 
     private int servePublished(HttpExchange exchange, String rawName) throws IOException {
@@ -600,6 +835,7 @@ public final class WebServer {
             return sendJson(exchange, 500, error("template_missing", 500,
                     "页面模板缺失", null));
         }
+
         Sessions.Session session = currentSession(exchange, false);
         String player = session == null || session.player == null ? "" : session.player;
         boolean verified = session != null && session.verified();
@@ -611,78 +847,105 @@ public final class WebServer {
         values.put("auto_publish", config.autoPublish ? "1" : "");
         values.put("max_bytes_mb", String.valueOf(config.maxUploadBytes / (1024 * 1024)));
 
-        // ---- 页面文案：全部来自 messages/<语言>.yml ----
-        // 按请求语言把 site.* 的值直接渲染进 HTML；同时把整个语言的文案表
-        // 注入给前端（切语言时用），所以语言文件是唯一来源。
+        if ("result".equals(page)) {
+            addResultValues(exchange, values, player, verified);
+        }
+        return serveRenderedPage(exchange, html, page, values);
+    }
+
+    /** 结果页要按图片状态给出文案键和链接。 */
+    private void addResultValues(HttpExchange exchange, Map<String, String> values,
+                                 String player, boolean verified) {
+        String name = queryParam(exchange, "name");
+        boolean renamed = "1".equals(queryParam(exchange, "renamed"));
+        values.put("renamed_key", renamed ? "status.renamed" : "");
+        values.put("renamed_text", renamed ? "名字已更新。" : "");
+
+        UploadStore.Item item = Texts.isSafeFileName(name, config.maxNameLength)
+                ? store.get(name) : null;
+        if (item == null) {
+            values.put("name", "");
+            values.put("nickname", "");
+            values.put("status_key", "status.unknown");
+            values.put("status_params", "");
+            values.put("status_text", "找不到这张图片。");
+            values.put("url", "");
+            values.put("can_rename", "");
+            values.put("thumb_params", "");
+            return;
+        }
+        boolean mine = verified && player.equals(item.player);
+        boolean pending = UploadStore.STATUS_PENDING.equals(item.status);
+        values.put("name", Texts.escapeHtml(item.name));
+        values.put("nickname", Texts.escapeHtml(item.nickname == null ? "" : item.nickname));
+        values.put("can_rename", mine && pending && config.allowRename ? "1" : "");
+        values.put("thumb_params", Texts.escapeHtmlAttr(
+                "alt:{\"name\":\"" + jsonSafe(item.name) + "\"}"));
+
+        if (UploadStore.STATUS_PUBLISHED.equals(item.status)) {
+            values.put("status_key", "status.published");
+            values.put("status_text", "已发布，可以直接在游戏里贴了。");
+            values.put("url", Texts.escapeHtml(config.uploadUrl(item.name)));
+        } else if (pending) {
+            values.put("status_key", "status.pending");
+            values.put("status_text", "已提交，等待站长审核。审核通过后就能在游戏里贴了。");
+            values.put("url", "");
+        } else {
+            String reason = item.rejectedReason == null ? "" : item.rejectedReason;
+            if (reason.isEmpty()) {
+                values.put("status_key", "status.rejected");
+                values.put("status_text", "这张图没有通过审核。");
+                values.put("status_params", "");
+            } else {
+                values.put("status_key", "status.rejected_reason");
+                values.put("status_text", "这张图没有通过审核（原因：" + reason + "）。");
+                values.put("status_params", Texts.escapeHtmlAttr(
+                        "{\"reason\":\"" + jsonSafe(reason) + "\"}"));
+            }
+            values.put("url", "");
+        }
+    }
+
+    private int serveRenderedPage(HttpExchange exchange, String html, String page)
+            throws IOException {
+        return serveRenderedPage(exchange, html, page, new LinkedHashMap<>());
+    }
+
+    /**
+     * 渲染并返回一个页面。
+     *
+     * 三件事必须一起做，所以抽成一个方法：
+     *   1. 按请求语言把 messages/<语言>.yml 里的每个键做成 $msg_键 变量
+     *   2. 页脚那两句嵌 server.properties 的 motd 和服务器名
+     *   3. 把整张文案表注入给前端（切语言时用）
+     */
+    private int serveRenderedPage(HttpExchange exchange, String html, String page,
+                                 Map<String, String> values) throws IOException {
         String lang = resolveLang(exchange);
         values.put("lang", lang);
+        values.put("page", page);
+
+        // 页脚要显示服务器自己的信息，直接从 server.properties 实时取
+        String motd = serverMotd();
+        String server = serverName();
         for (Map.Entry<String, String> entry : messages.table(lang).entrySet()) {
             String key = entry.getKey();
+            String value = key.equals("site.footer_note")
+                    ? messages.get(lang, key, "motd", motd)
+                    : key.equals("site.footer_copyright")
+                            ? messages.get(lang, key, "server", server)
+                            : entry.getValue();
             // 转义后当成模板变量：键里的点换成下划线，于是 yml 里任何一个键
             // 都能像 $msg_upload_nicknamePlaceholder 这样直接写进页面。
-            values.put("msg_" + key.replace('.', '_'), Texts.escapeHtml(entry.getValue()));
+            values.put("msg_" + key.replace('.', '_'), Texts.escapeHtml(value));
         }
         values.put("msg_site_show_manual_claim", config.showManualClaim ? "1" : "");
         values.put("msg_site_allow_rename", config.allowRename ? "1" : "");
         values.put("msg_site_show_copy_buttons", config.showCopyButtons ? "1" : "");
-        // 这个 JSON 会进 <script> 里，必须把 </script> 挡住
         values.put("messages_json", messagesJson(lang));
 
-        if ("result".equals(page)) {
-            String name = queryParam(exchange, "name");
-            UploadStore.Item item = Texts.isSafeFileName(name, config.maxNameLength)
-                    ? store.get(name) : null;
-            if (item == null) {
-                values.put("name", "");
-                values.put("nickname", "");
-                values.put("status_key", "status.unknown");
-                values.put("status_params", "");
-                values.put("status_text", "找不到这张图片。");
-                values.put("url", "");
-                values.put("can_rename", "");
-                values.put("renamed_key", "");
-                values.put("renamed_text", "");
-                values.put("thumb_params", "");
-            } else {
-                boolean mine = verified && player.equals(item.player);
-                boolean pending = UploadStore.STATUS_PENDING.equals(item.status);
-                values.put("name", Texts.escapeHtml(item.name));
-                values.put("nickname", Texts.escapeHtml(
-                        item.nickname == null ? "" : item.nickname));
-                values.put("can_rename", mine && pending ? "1" : "");
-                values.put("renamed_key",
-                        "1".equals(queryParam(exchange, "renamed")) ? "status.renamed" : "");
-                values.put("renamed_text",
-                        "1".equals(queryParam(exchange, "renamed")) ? "名字已更新。" : "");
-                values.put("thumb_params", Texts.escapeHtmlAttr(
-                        "alt:{\"name\":\"" + jsonSafe(item.name) + "\"}"));
-                if (UploadStore.STATUS_PUBLISHED.equals(item.status)) {
-                    values.put("status_key", "status.published");
-                    values.put("status_text", "已发布，可以直接在游戏里贴了。");
-                    values.put("url", Texts.escapeHtml(config.uploadUrl(item.name)));
-                } else if (pending) {
-                    values.put("status_key", "status.pending");
-                    values.put("status_text", "已提交，等待站长审核。审核通过后就能在游戏里贴了。");
-                    values.put("url", "");
-                } else {
-                    String reason = item.rejectedReason == null ? "" : item.rejectedReason;
-                    if (reason.isEmpty()) {
-                        values.put("status_key", "status.rejected");
-                        values.put("status_text", "这张图没有通过审核。");
-                        values.put("status_params", "");
-                    } else {
-                        values.put("status_key", "status.rejected_reason");
-                        values.put("status_text", "这张图没有通过审核（原因：" + reason + "）。");
-                        values.put("status_params", Texts.escapeHtmlAttr(
-                                "{\"reason\":\"" + jsonSafe(reason) + "\"}"));
-                    }
-                    values.put("url", "");
-                }
-            }
-        }
         String output = render(html, values);
-        // 把 config.yml 里的英文文案注入成全局对象，i18n.js 启动时合并进字典。
-        // 放在 </head> 之前，保证引擎一读就能拿到。
+        // 把当前语言的整张文案表注入成全局对象，i18n.js 启动时合并进字典
         String injection = "<script>window.IMGUP_MESSAGES="
                 + values.getOrDefault("messages_json", "{}")
                 + ";window.IMGUP_LANG=" + Json.write(lang) + ";</script>\n";
@@ -991,6 +1254,20 @@ public final class WebServer {
             return fromCookie.toLowerCase(Locale.ROOT);
         }
         return messages.defaultLang();
+    }
+
+    /**
+     * 服务器 motd / 服务器名，来自 server.properties。
+     *
+     * 由插件通过 {@link GameBridge} 传进来（Bukkit 的 getMotd / getName 是
+     * 实时值，改完 server.properties 重启就变），web 层不直接碰 Bukkit。
+     */
+    private String serverMotd() {
+        return game == null ? "" : game.serverMotd();
+    }
+
+    private String serverName() {
+        return game == null ? "" : game.serverName();
     }
 
     /** 供后台用：把所有待审核的图列出来。 */
