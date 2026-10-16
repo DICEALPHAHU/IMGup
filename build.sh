@@ -132,6 +132,25 @@ with zipfile.ZipFile(jar) as zf:
     print("    语言文件：zh/en 各 " + str(len(tables["zh"]))
           + " 条键，键名合法且完全一致")
 
+    # 非中文语言文件里不允许出现中文 —— 漏译会让玩家在英文界面看到中文，
+    # 而且站长根本不知道该改哪一条。（meta.* 是语言自称，必须用该语言自己的写法）
+    cjk = re.compile(r"[\u4e00-\u9fff]")
+    for lang in sorted(tables):
+        if lang.startswith("zh"):
+            continue
+        name = "messages/" + lang + ".yml"
+        with zf.open(name) as fh:
+            text = fh.read().decode("utf-8")
+        leaked = []
+        for key, value in re.findall(r'^([A-Za-z][\w.]*):\s*"(.*)"\s*$', text, re.M):
+            if key.startswith("meta."):
+                continue
+            if cjk.search(value):
+                leaked.append(key + "=" + value[:30])
+        if leaked:
+            sys.exit(name + " 里还有中文（漏译）：" + "; ".join(leaked[:5]))
+    print("    非中文语言文件里没有漏译的中文")
+
     # 模板里的 $site_xxx 占位符必须都能在语言文件里找到
     missing = []
     for page in ("index", "upload", "result"):

@@ -1,33 +1,37 @@
 # ImgUp English messages
 #
-# 这个文件里的键必须和 messages/ 下其它语言文件一一对应 —— 缺哪个键，
-# 那个语言下就会回退到默认语言（config.yml 的 language）。
-#
-# 页面上的文字、报错提示、状态说明全部在这里，改完 /imgup reload 生效。
-# 想加一门语言：复制一份改名（比如 jp.yml），把值换成日文即可，
-# 玩家就能在网页右上角切到它。
+# Keys in this file must match the other files in messages/ one for one.
+# A key that is missing here falls back to the default language (config.yml language).
+# 
+# Every string shown on the site lives in these files. Changes apply on /imgup reload.
+# To add a language, copy this file (e.g. jp.yml) and translate the values.
 
-# ---------------------------------------------------------------- 网站元素（页面上显示给玩家的文字） --
-site.title: "图片上传站"
-site.brand: "图片上传站"
-site.nav_admin: "站长入口"
-site.home_heading: "上传海报"
-site.home_lede: "先在网页上获取一个 8 位上传码，再进游戏输入 /imgup 你的上传码 完成确认，就可以上传图片了。"
-site.home_first_step_title: "第一步 · 获取上传码"
-site.home_button: "获取上传码"
-site.home_second_step_title: "备用方式 · 手动输入上传码"
-site.upload_heading: "上传图片"
-site.upload_lede: "选一张截图或海报，上传后会生成游戏内可用的图片名。"
-site.upload_button: "上传"
-site.upload_nickname_title: "图片昵称"
-site.result_heading: "上传完成"
-site.result_rename_title: "不满意这个名字？现在还能改"
-site.result_rename_button: "保存新名字"
-site.footer_note: "图片上传站 · 深色 Minecraft 风格 · 纯静态页面，不加载任何外部资源。"
-site.footer_permission: "游戏内贴海报需要 "
-site.footer_permission_suffix: " 权限，没有权限请找站长。"
+# ---------------------------------------------------------------- This language's own name --
+# meta.name is shown on the language switcher (write the name in this language itself).
+meta.name: "English"
+meta.code: "en"
 
-# ---------------------------------------------------------------- 通用 --
+# ------------------------------------------------------------ Site elements (text shown to players) --
+site.title: "Image Upload"
+site.brand: "Image Upload"
+site.nav_admin: "Admin"
+site.home_heading: "Upload a poster"
+site.home_lede: "Get an 8-character upload code here, then type /imgup <your code> in game to confirm. After that you can upload images."
+site.home_first_step_title: "Step 1 · Get an upload code"
+site.home_button: "Get upload code"
+site.home_second_step_title: "Fallback · enter the code manually"
+site.upload_heading: "Upload an image"
+site.upload_lede: "Pick a screenshot or poster. After uploading you get a file name that works in game."
+site.upload_button: "Upload"
+site.upload_nickname_title: "Image nickname"
+site.result_heading: "Upload complete"
+site.result_rename_title: "Not happy with this name? You can still change it"
+site.result_rename_button: "Save new name"
+site.footer_note: "Image Upload · dark Minecraft style · fully self-contained, no external assets."
+site.footer_permission: "Posting in game requires the "
+site.footer_permission_suffix: " permission — ask your admin if you do not have it."
+
+# ------------------------------------------------------------ Common --
 common.brand: "Image Upload"
 common.adminEntry: "Admin"
 common.backHome: "🏠 Home"
@@ -35,7 +39,6 @@ common.uploadAnother: "⬆️ Upload another"
 common.footerTagline: "Image Upload · dark Minecraft style · fully self-contained, no external assets."
 common.footerPermBefore: "Posting in game requires the "
 common.footerPermAfter: " permission — ask your admin if you do not have it."
-common.langSwitch: "中文"
 common.langSwitchTitle: "Switch to Chinese"
 common.copy: "📋 Copy"
 common.copied: "✅ Copied"
@@ -44,7 +47,7 @@ common.netError: "Network error — could not reach the server. Please try again
 common.badCsrf: "Your page token expired (bad_csrf). Please refresh and try again."
 common.sessionExpired: "Your session expired. Please get a new upload code."
 
-# ---------------------------------------------------------------- 首页 · 获取上传码 --
+# ------------------------------------------------------------ Home · get an upload code --
 index.title: "Get upload code · Image Upload"
 index.heading: "Upload a poster"
 index.lede: "Get an 8-character upload code here, then type "
@@ -82,7 +85,7 @@ index.genFailed: "Could not generate an upload code (HTTP {status}). Please try 
 index.badCodeLength: "An upload code is 8 characters long. Please check and try again."
 index.claimFailed: "Verification failed. Please get a new upload code."
 
-# ---------------------------------------------------------------- 上传页 --
+# ------------------------------------------------------------ Upload page --
 upload.title: "Upload an image · Image Upload"
 upload.heading: "Upload an image"
 upload.lede: "Pick a screenshot or poster. After uploading you get a file name that works in game."
@@ -115,7 +118,7 @@ upload.errFailed: "Upload failed (HTTP {status})"
 upload.errExpired: "Your verification expired. Please go back home and get a new upload code."
 upload.errCancelled: "Upload cancelled."
 
-# ---------------------------------------------------------------- 结果页 --
+# ------------------------------------------------------------ Result page --
 result.title: "Upload complete · Image Upload"
 result.heading: "Upload complete"
 result.statusDefault: "Your image has been processed."
@@ -146,7 +149,7 @@ result.renameEmpty: "The nickname cannot be empty."
 result.renameFailed: "Rename failed (HTTP {status})"
 result.renameNetError: "Network error — rename failed. Please try again later."
 
-# ---------------------------------------------------------------- 状态句（服务端只给键，文案在这里） --
+# ------------------------------------------------------------ Status lines (the server sends the key, text lives here) --
 status.published: "Published — you can post it in game now."
 status.pending: "Submitted and waiting for the admin to review. Once approved you can post it in game."
 status.rejected: "This image was not approved."
@@ -154,7 +157,7 @@ status.rejected_reason: "This image was not approved (reason: {reason})."
 status.unknown: "Unknown status."
 status.renamed: "Name updated."
 
-# ---------------------------------------------------------------- 错误提示（键名与 app 里的错误码对应） --
+# ------------------------------------------------------------ Errors (keys mirror the error codes) --
 err.bad_player: "That game ID is not valid."
 err.bad_csrf: "Security check failed. Please refresh the page and try again."
 err.bad_request: "Malformed request."
@@ -186,7 +189,7 @@ err.template_missing: "A page template is missing. Please contact the admin."
 err.internal: "Internal server error. Please try again later."
 err.timeout: "The request timed out. Please try again."
 
-# ---------------------------------------------------------------- 站长后台 --
+# ------------------------------------------------------------ Admin page --
 admin.title: "Admin · Image Upload"
 admin.heading: "Admin"
 admin.login: "Log in"

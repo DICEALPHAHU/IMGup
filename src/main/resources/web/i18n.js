@@ -41,7 +41,6 @@
       'common.footerTagline': '图片上传站 · 深色 Minecraft 风格 · 纯静态页面，不加载任何外部资源。',
       'common.footerPermBefore': '游戏内贴海报需要 ',
       'common.footerPermAfter': '$site_footer_permission_suffix',
-      'common.langSwitch': 'English',
       'common.langSwitchTitle': '切换到英文',
       'common.copy': '📋 复制',
       'common.copied': '✅ 已复制',
@@ -220,7 +219,6 @@
       'common.footerTagline': 'Image Upload · dark Minecraft style · fully self-contained, no external assets.',
       'common.footerPermBefore': 'Posting in game requires the ',
       'common.footerPermAfter': ' permission — ask your admin if you do not have it.',
-      'common.langSwitch': '中文',
       'common.langSwitchTitle': 'Switch to Chinese',
       'common.copy': '📋 Copy',
       'common.copied': '✅ Copied',
@@ -578,8 +576,8 @@
     btn.className = 'lang-switch';
     btn.setAttribute('data-i18n-attr', 'title:common.langSwitchTitle');
     var label = document.createElement('span');
-    label.setAttribute('data-i18n', 'common.langSwitch');
-    label.textContent = DICT[FALLBACK]['common.langSwitch'];
+    // 按钮上写「切到哪门语言」，名字来自目标语言的 meta.name
+    label.textContent = LANGUAGE_NAMES[FALLBACK] || FALLBACK.toUpperCase();
     btn.appendChild(label);
     btn.addEventListener('click', function () {
       cycleLanguage(btn);
@@ -605,11 +603,28 @@
     var others = AVAILABLE.filter(function (code) { return code !== lang; });
     if (!others.length) { return; }
     var next = others[0];
-    label.textContent = LANGUAGE_NAMES[next] || next.toUpperCase();
+    label.textContent = languageName(next);
   }
 
-  /** 语言文件里约定好的语言自称，加语言时在这里补一行即可。 */
-  var LANGUAGE_NAMES = { zh: '中文', en: 'English', jp: '日本語', ja: '日本語', ru: 'Русский', ko: '한국어' };
+  /**
+   * 语言开关上显示的名字，来自各语言文件里的 meta.name（写这门语言自己的叫法）。
+   * 加语言时不用改这里 —— 复制一份 yml 填好 meta.name 就会出现。
+   */
+  var LANGUAGE_NAMES = { zh: '中文', en: 'English' };
+
+  function languageName(code) {
+    if (LANGUAGE_NAMES[code]) { return LANGUAGE_NAMES[code]; }
+    // 当前语言表里没有别的语言的 meta.name，就退回语言代码
+    return code.toUpperCase();
+  }
+
+  /** 用当前语言文件里的 meta.name 补齐已知语言名（至少能显示自己）。 */
+  function rememberOwnName() {
+    var name = DICT[lang] && DICT[lang]['meta.name'];
+    if (typeof name === 'string' && name) {
+      LANGUAGE_NAMES[lang] = name;
+    }
+  }
 
   /**
    * 切到下一门语言：先让服务端记住（Set-Cookie），再带 ?lang= 刷新页面，
@@ -625,7 +640,7 @@
     if (others.length > 1) {
       // 超过两门语言时让玩家选，避免「点好几下才轮到想要的」
       var picked = window.prompt(others.map(function (c, i) {
-        return (i + 1) + '. ' + (LANGUAGE_NAMES[c] || c);
+        return (i + 1) + '. ' + languageName(c);
       }).join('\n'), '1');
       var index = parseInt(picked, 10);
       if (!index || index < 1 || index > others.length) { return; }
@@ -693,6 +708,7 @@
   // 直接调用会匹配到 0 个元素、.topnav 也是 null，等于初始化根本没跑。
   // 所以挂到 DOMContentLoaded；如果文档已经就绪（defer / 动态插入的情况）就直接跑。
   function boot() {
+    rememberOwnName();
     buildSwitcher();
     applyStatic();
     applyMeta();
