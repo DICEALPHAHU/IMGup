@@ -1,4 +1,5 @@
 import com.huhumc.imgup.Messages;
+import com.huhumc.imgup.Resources;
 import com.huhumc.imgup.Sessions;
 import com.huhumc.imgup.UploadStore;
 import com.huhumc.imgup.WebConfig;
@@ -36,7 +37,7 @@ public final class ConfigElementsTest {
 
         // 语言文件：把每个元素都改成「CUSTOM-<键名>」形式，方便在页面里找
         List<String> elementKeys = List.of(
-                "site.title", "site.brand", "site.nav_admin",
+                "site.brand", "site.nav_admin",
                 "site.home_heading", "site.home_lede", "site.home_first_step_title",
                 "site.home_button", "site.home_second_step_title",
                 "site.upload_heading", "site.upload_lede", "site.upload_button",
@@ -51,23 +52,29 @@ public final class ConfigElementsTest {
         List<String> pageSpecific = List.of(
                 "site.nav_admin", "site.nav_reverify", "site.nav_reupload",
                 "site.upload_footer", "site.footer_note", "site.footer_copyright");
-        List<String> lines = new ArrayList<>();
-        lines.add("meta.name: \"中文\"");
-        lines.add("meta.code: \"zh\"");
-        for (String key : elementKeys) {
-            if (key.equals("site.footer_note")) {
-                // 页脚要嵌 server.properties 的 motd，所以这里保留真实的占位符写法
-                lines.add(key + ": \"MOTD:{motd}\"");
-            } else if (key.equals("site.footer_copyright")) {
-                lines.add(key + ": \"SERVER:{server}\"");
-            } else {
-                lines.add(key + ": \"CUSTOM-" + key.substring("site.".length()) + "\"");
-            }
+        // 先拿真实的语言文件当底子：页面文案现在全部由服务端渲染，
+        // 缺任何一个键那一块就会渲染成空白，所以测试用的文件必须是完整的。
+        String realZh = Resources.readText("messages/zh.yml");
+        String realEn = Resources.readText("messages/en.yml");
+        if (realZh == null || realEn == null) {
+            throw new IllegalStateException("读不到 jar 里的 messages/*.yml（测试要把 "
+                    + "src/main/resources 放进 classpath）");
         }
-        Files.writeString(msgDir.resolve("zh.yml"), String.join("\n", lines) + "\n",
-                StandardCharsets.UTF_8);
-        Files.writeString(msgDir.resolve("en.yml"), String.join("\n", lines) + "\n",
-                StandardCharsets.UTF_8);
+        for (String key : elementKeys) {
+            String value;
+            if (key.equals("site.footer_note")) {
+                // 页脚要嵌 server.properties 的 motd，保留真实的占位符写法
+                value = "MOTD:{motd}";
+            } else if (key.equals("site.footer_copyright")) {
+                value = "SERVER:{server}";
+            } else {
+                value = "CUSTOM-" + key.substring("site.".length());
+            }
+            realZh = override(realZh, key, value);
+            realEn = override(realEn, key, value);
+        }
+        Files.writeString(msgDir.resolve("zh.yml"), realZh, StandardCharsets.UTF_8);
+        Files.writeString(msgDir.resolve("en.yml"), realEn, StandardCharsets.UTF_8);
 
         int port = freePort();
         ConfigStub stub = new ConfigStub()
@@ -110,12 +117,12 @@ public final class ConfigElementsTest {
             // 每个页面应该渲染出来的元素 —— 声明式，多一个少一个都会报出来。
             // 顶栏链接和页脚权限句本来就是页面专属，所以各页不同是正常的。
             checkPage(base + "/", "首页", List.of(
-                    "site.title", "site.brand", "site.nav_admin",
+                    "site.brand", "site.nav_admin",
                     "site.home_heading", "site.home_lede",
                     "site.home_first_step_title", "site.home_button",
                     "site.home_second_step_title"));
             checkPage(base + "/upload", "上传页", List.of(
-                    "site.title", "site.brand", "site.nav_reverify",
+                    "site.brand", "site.nav_reverify",
                     "site.upload_heading", "site.upload_lede", "site.upload_button",
                     "site.upload_nickname_title", "site.upload_footer"));
             checkHeadings(base);
@@ -124,7 +131,7 @@ public final class ConfigElementsTest {
             checkEveryAssetResolves(base);
             checkHiddenAttributeWorks(base);
             checkPage(base + "/result", "结果页", List.of(
-                    "site.title", "site.brand", "site.nav_reupload",
+                    "site.brand", "site.nav_reupload",
                     "site.result_heading", "site.result_rename_title",
                     "site.result_rename_button"));
         } finally {
@@ -139,18 +146,47 @@ public final class ConfigElementsTest {
     }
 
     /** 首页主标题必须是「上传图片」。 */
+    /** 把某个键的值替换掉（键不存在就追加到末尾）。 */
+    private static String override(String yaml, String key, String value) {
+        String line = key + ": \"" + value + "\"";
+        if (java.util.regex.Pattern.compile("^" + java.util.regex.Pattern.quote(key) + ":",
+                java.util.regex.Pattern.MULTILINE).matcher(yaml).find()) {
+            return yaml.replaceAll("(?m)^" + java.util.regex.Pattern.quote(key) + ":.*$",
+                    java.util.regex.Matcher.quoteReplacement(line));
+        }
+        return yaml + (yaml.endsWith("\n") ? "" : "\n") + line + "\n";
+    }
+
+    /**
+     * 首页主标题要由 site.home_heading 驱动。
+     *
+     * 另外单独查真实语言文件里没写错字 —— 之前这里是在渲染出来的页面上找
+     * 「上传图片」，但测试用的是 CUSTOM- 值，那种写法根本测不到真实文案。
+     */
     private static void checkHeadings(String base) throws Exception {
-        System.out.println("\n=== 页面主标题 ===");
+        System.out.println("\n=== 首页主标题 ===");
         String home = fetch(base + "/").replaceAll("(?s)<script>window\\.IMGUP_.*?</script>", "");
-        boolean uploadImage = home.contains("上传图片");
-        boolean poster = home.contains("上传海报");
-        if (uploadImage && !poster) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("<h1[^>]*>.*?</h1>", java.util.regex.Pattern.DOTALL).matcher(home);
+        String heading = m.find() ? m.group(0).replaceAll("<[^>]+>", "").trim() : "";
+        if (heading.contains("CUSTOM-home_heading")) {
             ok++;
-            System.out.println("  [OK]   首页主标题是「上传图片」");
+            System.out.println("  [OK]   首页主标题来自 site.home_heading");
         } else {
             bad++;
-            System.out.println("  [!!]   首页主标题不对（上传图片=" + uploadImage
-                    + "，还残留「上传海报」=" + poster + "）");
+            System.out.println("  [!!]   首页主标题不是 site.home_heading 的值，拿到「"
+                    + heading + "」");
+        }
+
+        // 真实语言文件里不能出现「上传海报」这种旧措辞
+        String zh = Resources.readText("messages/zh.yml");
+        String en = Resources.readText("messages/en.yml");
+        if (zh != null && en != null && !zh.contains("上传海报") && !en.contains("Upload a poster")) {
+            ok++;
+            System.out.println("  [OK]   语言文件里没有旧的「上传海报」措辞");
+        } else {
+            bad++;
+            System.out.println("  [!!]   语言文件里还有「上传海报」或 \"Upload a poster\"");
         }
     }
 

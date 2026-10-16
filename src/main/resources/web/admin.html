@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title data-i18n="site.admin_heading">图片管理 · CustomImages</title>
+<title>$msg_admin_title</title>
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/i18n.js"></script>
 </head>
@@ -14,12 +14,11 @@
   <div class="wrap topbar-inner">
     <a class="brand" href="/">
       <span class="brand-mark" aria-hidden="true">🖼</span>
-      <span class="brand-text" data-i18n="site.brand">$msg_site_brand</span>
+      <span class="brand-text">$msg_site_brand</span>
     </a>
     <nav class="topnav">
-      <a href="/" data-i18n="common.backHome">🏠 返回首页</a>
-      <button class="btn btn-sm" type="button" id="logoutBtn"
-              data-i18n="site.admin_logout_button" hidden>退出登录</button>
+      <a href="/">$msg_common_backHome</a>
+      <button class="btn btn-sm" type="button" id="logoutBtn" hidden>$msg_site_admin_logout_button</button>
     </nav>
   </div>
 </header>
@@ -29,24 +28,23 @@
   <div class="page-head">
     <h1 class="page-title">
       <span class="icon" aria-hidden="true">🗂</span>
-      <span data-i18n="site.admin_heading">图片管理</span>
+      <span>$msg_site_admin_heading</span>
     </h1>
-    <p class="lede" data-i18n="site.admin_lede">这里可以查看、通过、拒绝和删除玩家上传的所有图片。</p>
+    <p class="lede">$msg_site_admin_lede</p>
   </div>
 
   <!-- 未登录：只显示登录卡片 -->
   <section class="panel" id="loginCard">
-    <h2 class="panel-title" data-i18n="site.admin_login_title">管理员登录</h2>
-    <p class="muted" data-i18n="site.admin_login_hint">输入 config.yml 里 web.admin_password 设置的密码。</p>
+    <h2 class="panel-title">$msg_site_admin_login_title</h2>
+    <p class="muted">$msg_site_admin_login_hint</p>
     <form id="loginForm" novalidate>
       <div class="field">
-        <label for="pw" data-i18n="site.admin_password_label">管理密码</label>
+        <label for="pw">$msg_site_admin_password_label</label>
         <input class="input" type="password" id="pw" name="password"
                autocomplete="current-password" enterkeyhint="go" required>
       </div>
       <div class="alert alert-error hidden" id="loginMsg" role="alert"></div>
-      <button class="btn btn-primary btn-block" type="submit" id="loginBtn"
-              data-i18n="site.admin_login_button">登录</button>
+      <button class="btn btn-primary btn-block" type="submit" id="loginBtn">$msg_site_admin_login_button</button>
     </form>
   </section>
 
@@ -57,15 +55,14 @@
 
     <div class="tabs" id="tabs">
       <button class="tab is-active" type="button" data-filter="all">
-        <span data-i18n="site.admin_filter_all">全部</span> <span class="tab-n">0</span></button>
+        <span>$msg_site_admin_filter_all</span> <span class="tab-n">0</span></button>
       <button class="tab" type="button" data-filter="pending">
-        <span data-i18n="site.admin_filter_pending">待审核</span> <span class="tab-n">0</span></button>
+        <span>$msg_site_admin_filter_pending</span> <span class="tab-n">0</span></button>
       <button class="tab" type="button" data-filter="published">
-        <span data-i18n="site.admin_filter_published">已发布</span> <span class="tab-n">0</span></button>
+        <span>$msg_site_admin_filter_published</span> <span class="tab-n">0</span></button>
       <button class="tab" type="button" data-filter="rejected">
-        <span data-i18n="site.admin_filter_rejected">已拒绝</span> <span class="tab-n">0</span></button>
-      <button class="btn btn-sm" type="button" id="bulkBtn"
-              data-i18n="site.admin_bulk_approve">全部通过</button>
+        <span>$msg_site_admin_filter_rejected</span> <span class="tab-n">0</span></button>
+      <button class="btn btn-sm" type="button" id="bulkBtn">$msg_site_admin_bulk_approve</button>
     </div>
 
     <div class="alert alert-error hidden" id="listMsg" role="alert"></div>
@@ -73,15 +70,15 @@
 
     <div class="adm-grid" id="grid"></div>
 
-    <p class="muted" id="empty" hidden data-i18n="site.admin_empty">还没有任何图片。</p>
+    <p class="muted" id="empty" hidden>$msg_site_admin_empty</p>
   </section>
 
 </main>
 
 <footer class="foot">
   <div class="wrap">
-    <p data-i18n="site.footer_note">$msg_site_footer_note</p>
-    <p class="foot-copy" data-i18n="site.footer_copyright">$msg_site_footer_copyright</p>
+    <p>$msg_site_footer_note</p>
+    <p class="foot-copy">$msg_site_footer_copyright</p>
   </div>
 </footer>
 

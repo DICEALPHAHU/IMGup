@@ -91,6 +91,50 @@ public final class Texts {
         return sb.toString();
     }
 
+    /**
+     * 网页用的文案渲染：先转义，再把反引号包起来的部分变成 {@code <code>}。
+     *
+     * 语言文件里这样写：
+     *     游戏内贴海报需要 `/image create` 权限
+     * 页面上就是：
+     *     游戏内贴海报需要 &lt;code&gt;/image create&lt;/code&gt; 权限
+     *
+     * 顺序很关键 —— **先转义再插标签**。反着来的话，语言文件里写个 &lt;script&gt;
+     * 就会被当成真标签执行（语言文件是管理员能改的，不能信）。
+     * 转义之后反引号本身不受影响，所以这一步只会插入 code 标签。
+     *
+     * 没配对的单个反引号原样留着，不会把后面整段吃掉。
+     */
+    public static String inlineHtml(String value) {
+        if (value == null) {
+            return "";
+        }
+        String escaped = escapeHtml(value);
+        StringBuilder out = new StringBuilder(escaped.length() + 16);
+        int i = 0;
+        while (i < escaped.length()) {
+            int open = escaped.indexOf('`', i);
+            if (open < 0) {
+                out.append(escaped, i, escaped.length());
+                break;
+            }
+            int close = escaped.indexOf('`', open + 1);
+            if (close < 0) {
+                out.append(escaped, i, escaped.length());
+                break;
+            }
+            out.append(escaped, i, open)
+               .append("<code>").append(escaped, open + 1, close).append("</code>");
+            i = close + 1;
+        }
+        return out.toString();
+    }
+
+    /** 纯文本上下文（游戏内聊天）用：反引号只是标记，去掉即可。 */
+    public static String stripBackticks(String value) {
+        return value == null ? "" : value.replace("`", "");
+    }
+
     /** 放进 HTML 属性里的 JSON（把双引号转成实体，避免提前闭合属性）。 */
     public static String escapeHtmlAttr(String value) {
         return escapeHtml(value);

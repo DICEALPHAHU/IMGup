@@ -54,6 +54,7 @@ public final class CoreSelfTest {
         testNoUpscale();
         testSessionsConfirmFlow();
         testServerProperties();
+        testInlineCode();
 
         System.out.println();
         System.out.println("通过 " + passed + " 项，失败 " + failed + " 项");
@@ -424,6 +425,54 @@ public final class CoreSelfTest {
     }
 
     // ------------------------------------------------------------ 会话
+
+    // ------------------------------------------- 行内代码（反引号）
+
+    /**
+     * 语言文件里用反引号标行内代码，网页上要变成 <code> 标签。
+     *
+     * 顺序必须是「先转义、再插标签」：反过来的话，语言文件里写个 &lt;script&gt;
+     * 就会被当成真标签插进页面 —— 语言文件是站长能改的，不能当可信输入。
+     */
+    private static void testInlineCode() {
+        System.out.println("\n== 行内代码（反引号 -> <code>） ==");
+
+        checkEquals("单个代码片段", "需要 <code>/image create</code> 权限",
+                Texts.inlineHtml("需要 `/image create` 权限"));
+        checkEquals("多个代码片段",
+                "<code>a</code> 和 <code>b</code>",
+                Texts.inlineHtml("`a` 和 `b`"));
+        checkEquals("没有反引号时原样返回（只转义）",
+                "普通文字 &amp; 符号", Texts.inlineHtml("普通文字 & 符号"));
+        checkEquals("代码片段里的尖括号被转义",
+                "<code>&lt;你的上传码&gt;</code>",
+                Texts.inlineHtml("`<你的上传码>`"));
+
+        // 最关键的一条：不能成为 HTML 注入的口子
+        String attack = Texts.inlineHtml("`<script>alert(1)</script>`");
+        check("代码片段里的 script 不会变成真标签",
+                !attack.contains("<script>") && attack.contains("&lt;script&gt;"),
+                "拿到 " + attack);
+
+        String outside = Texts.inlineHtml("<img src=x onerror=alert(1)>");
+        check("代码片段外的标签也被转义",
+                !outside.contains("<img"), "拿到 " + outside);
+
+        // 没配对的单个反引号不能把后面整段吃掉
+        checkEquals("奇数个反引号：剩下的原样保留", "前面 ` 后面",
+                Texts.inlineHtml("前面 ` 后面"));
+
+        // 聊天（纯文本）上下文里反引号只是标记，要去掉
+        checkEquals("聊天里去掉反引号", "需要 /image create 权限",
+                Texts.stripBackticks("需要 `/image create` 权限"));
+
+        // 页脚那两句的真实写法
+        checkEquals("页脚写法转出来是对的",
+                "读取服务器 <code>MOTD值</code>，"
+                        + "游戏内贴海报需要 <code>/image create</code> 权限，没有权限请找管理员。",
+                Texts.inlineHtml(
+                        "读取服务器 `MOTD值`，游戏内贴海报需要 `/image create` 权限，没有权限请找管理员。"));
+    }
 
     // ------------------------------------------- server.properties 解析
 

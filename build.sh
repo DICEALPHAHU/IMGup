@@ -204,6 +204,24 @@ with zipfile.ZipFile(jar) as zf:
     dead = sorted(declared_site - used_site)
     if dead:
         sys.exit("这些 site.* 键声明了但没有页面用到（改了不会生效）：" + str(dead))
+
+    # 正向检查（这条曾经漏掉，害得第二步面板标题是空的）：
+    # 模板里用到的 $msg_xxx 必须在语言文件里真的有这个键。
+    # 少了键不会报错，只会让那一块渲染成空白 —— 光看页面很难发现。
+    all_keys = tables["zh"]
+    form = {k.replace(".", "_"): k for k in all_keys}
+    missing_keys = []
+    for page in ("index", "upload", "result", "admin"):
+        with zf.open("web/" + page + ".html") as fh:
+            html = fh.read().decode("utf-8")
+        for used in re.findall(r"\$msg_([A-Za-z0-9_]+)", html):
+            if form.get(used) is None:
+                missing_keys.append(page + " -> $msg_" + used)
+    if missing_keys:
+        sys.exit("模板用了语言文件里不存在的键（那部分会渲染成空白）："
+                 + str(sorted(set(missing_keys))))
+
+    # 页面里真正用到的 $msg_ 键必须来自「当前语言」，且键名要拼得出来
     print("    模板占位符都能在语言文件里找到，且没有用不上的 site.* 键")
 
     # 版本号只能有一个来源（plugin.yml）。WebServer 里若写死版本号，

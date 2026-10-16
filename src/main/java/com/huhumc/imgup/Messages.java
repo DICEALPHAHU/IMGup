@@ -311,7 +311,7 @@ public final class Messages {
         // 没给替换值的占位符直接去掉 —— 否则聊天框里会露出 {name} 这种东西。
         // 注意：两参版也必须做这件事。Java 会优先选它而不是下面的 varargs 版本，
         // 只在 varargs 版里剥离会导致 get(lang, key) 漏掉处理（踩过这个坑）。
-        return stripPlaceholders(raw(lang, key));
+        return Texts.stripBackticks(stripPlaceholders(raw(lang, key)));
     }
 
     /** 原样返回，不做占位符处理。 */
@@ -334,6 +334,18 @@ public final class Messages {
         return value == null ? key : value;
     }
 
+    /**
+     * 网页用：跟 {@link #get} 一样，但额外把反引号包起来的部分变成
+     * {@code <code>} 标签（先转义再插标签，见 {@link Texts#inlineHtml}）。
+     *
+     * 游戏内聊天走 {@link #get}，那里反引号会被去掉 —— 聊天框不认 HTML。
+     */
+    public String html(String lang, String key, String... pairs) {
+        // 注意：这里必须用 raw()，不能走 get() —— get() 是给聊天用的，
+        // 它会把反引号去掉，那样 inlineHtml 就没有可转换的标记了（踩过这个坑）。
+        return Texts.inlineHtml(substitute(raw(lang, key), pairs));
+    }
+
     /** 把 {xxx} 形式、但没有提供值的占位符去掉。 */
     public static String stripPlaceholders(String text) {
         return text == null ? "" : text.replaceAll("\\{[a-zA-Z_][a-zA-Z0-9_]*\\}", "");
@@ -346,7 +358,12 @@ public final class Messages {
      * {motd} / {server}，运行时把实时值填进去。
      */
     public String get(String lang, String key, String... pairs) {
-        String text = raw(lang, key);
+        // 纯文本上下文（游戏内聊天）：反引号只是标记，去掉
+        return Texts.stripBackticks(substitute(raw(lang, key), pairs));
+    }
+
+    /** 替换 {名字} 占位符，并去掉没给值的那些。 */
+    private static String substitute(String text, String... pairs) {
         for (int i = 0; i + 1 < pairs.length; i += 2) {
             text = text.replace("{" + pairs[i] + "}", pairs[i + 1] == null ? "" : pairs[i + 1]);
         }

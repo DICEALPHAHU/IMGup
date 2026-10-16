@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title data-i18n="result.title">$msg_site_title</title>
+<title>$msg_result_title</title>
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/i18n.js"></script>
 </head>
@@ -17,81 +17,79 @@
   <div class="wrap topbar-inner">
     <a class="brand" href="/">
       <span class="brand-mark" aria-hidden="true">🖼</span>
-      <span class="brand-text" data-i18n="common.brand">$msg_site_brand</span>
+      <span class="brand-text">$msg_site_brand</span>
     </a>
-    <nav class="topnav"><a href="/upload" data-i18n="common.uploadAnother">$msg_site_nav_reupload</a></nav>
+    <nav class="topnav"><a href="/upload">$msg_site_nav_reupload</a></nav>
   </div>
 </header>
 
 <main class="wrap">
 
   <div class="page-head">
-    <h1 class="page-title"><span class="icon" aria-hidden="true">🎉</span><span data-i18n="result.heading">$msg_site_result_heading</span></h1>
-    <p class="lede" id="renamedText" data-i18n="$renamed_key"
-       data-i18n-params="">$renamed_text</p>
-    <p class="lede" id="statusText" data-i18n="$status_key"
-       data-i18n-params="$status_params">$status_text</p>
+    <h1 class="page-title"><span class="icon" aria-hidden="true">🎉</span><span>$msg_site_result_heading</span></h1>
+    <p class="lede" id="renamedText">$renamed_text</p>
+    <p class="lede" id="statusText">$status_text</p>
   </div>
 
   <section class="panel">
-    <h2 class="panel-title" data-i18n="result.previewTitle">图片预览</h2>
+    <h2 class="panel-title">$msg_result_previewTitle</h2>
     <img class="result-thumb" src="$url" data-i18n-attr="alt:result.thumbAlt"
          data-i18n-attr-params="alt:{&quot;name&quot;:&quot;$name&quot;}"
          alt="$msg_result_thumbAltPlain：$name">
-    <p class="muted"><span data-i18n="result.uploader">上传玩家：</span><span class="mono">$player</span></p>
+    <p class="muted"><span>$msg_result_uploader</span><span class="mono">$player</span></p>
   </section>
 
   <section class="panel">
-    <h2 class="panel-title" data-i18n="result.fileNameTitle">文件名</h2>
+    <h2 class="panel-title">$msg_result_fileNameTitle</h2>
     <div class="copy-row">
       <code class="name-box" id="nameBox">$name</code>
-      <button class="btn" type="button" data-copy="nameBox" data-i18n="result.copyName" data-label="📋 复制文件名">📋 复制文件名</button>
+      <button class="btn" type="button" data-copy="nameBox" data-label="📋 复制文件名">$msg_result_copyName</button>
     </div>
-    <p class="panel-note" data-i18n="result.fileNameNote">图片以这个完整文件名保存在服务器上，游戏插件按完整文件名匹配。</p>
+    <p class="panel-note">$msg_result_fileNameNote</p>
 
     <div id="renameBox" class="rename-box hidden">
-      <h3 class="sub-title" data-i18n="result.renameTitle">$msg_site_result_rename_title</h3>
+      <h3 class="sub-title">$msg_site_result_rename_title</h3>
       <div class="field">
-        <label for="renameInput"><span data-i18n="result.renameLabel">图片昵称</span><span class="counter" id="renameCount">0 / 32</span></label>
+        <label for="renameInput"><span>$msg_result_renameLabel</span><span class="counter" id="renameCount">0 / 32</span></label>
         <input class="input" type="text" id="renameInput" maxlength="32" autocomplete="off"
                placeholder="$msg_result_renamePlaceholder" data-i18n-attr="placeholder:result.renamePlaceholder" enterkeyhint="done"
                data-i18n-attr="placeholder:result.renamePlaceholder">
-        <span class="field-hint"><span data-i18n="result.renamePreviewPrefix">最终文件名会是 </span><span class="mono" id="renamePreview">—</span></span>
+        <span class="field-hint"><span>$msg_result_renamePreviewPrefix</span><span class="mono" id="renamePreview">—</span></span>
       </div>
       <div class="alert alert-error hidden" id="renameMsg" role="alert"></div>
       <div class="alert alert-ok hidden" id="renameOk" role="status"></div>
-      <button class="btn" type="button" id="renameBtn" data-i18n="result.renameSave">$msg_site_result_rename_button</button>
-      <p class="panel-note" data-i18n="result.renameNote">审核通过之后就改不了了 —— 那时候名字已经进了游戏世界，改了会让已经贴出去的海报找不到图。</p>
+      <button class="btn" type="button" id="renameBtn">$msg_site_result_rename_button</button>
+      <p class="panel-note">$msg_result_renameNote</p>
     </div>
-    <p class="panel-note" id="renameLocked" data-i18n="result.renameLocked">这张图已经发布，名字不能再改了。</p>
+    <p class="panel-note" id="renameLocked">$msg_result_renameLocked</p>
   </section>
 
   <section class="panel">
-    <h2 class="panel-title" data-i18n="result.useInGame">在游戏里使用</h2>
+    <h2 class="panel-title">$msg_result_useInGame</h2>
     <div class="copy-row">
       <code class="cmd-box" id="cmdBox">/image create $name</code>
-      <button class="btn btn-primary" type="button" data-copy="cmdBox" data-i18n="result.copyCommand" data-label="📋 复制指令">📋 复制指令</button>
+      <button class="btn btn-primary" type="button" data-copy="cmdBox" data-label="📋 复制指令">$msg_result_copyCommand</button>
     </div>
     <ol class="steps">
-      <li data-i18n="result.step1">点上面的按钮复制指令。</li>
-      <li><span data-i18n="result.step2">回到游戏，在聊天框里粘贴并发送（PC 端 </span><code>Ctrl+V</code><span>，手机端长按输入框粘贴）。</span></li>
-      <li data-i18n="result.step3">手持地图按游戏内的提示右键放置海报。</li>
+      <li>$msg_result_step1</li>
+      <li>$msg_result_step2</li>
+      <li>$msg_result_step3</li>
     </ol>
-    <p class="panel-note"><span data-i18n="result.permissionNote">贴海报还需要你在游戏里拥有 </span><code>images.command.create</code><span> 权限；如果提示没有权限，请联系站长。</span></p>
+    <p class="panel-note">$msg_result_permissionNote</p>
   </section>
 
   <div class="btn-row">
-    <a class="btn" href="/upload" data-i18n="common.uploadAnother">⬆️ 再传一张</a>
-    <a class="btn" href="/" data-i18n="common.backHome">🏠 返回首页</a>
+    <a class="btn" href="/upload">$msg_common_uploadAnother</a>
+    <a class="btn" href="/">$msg_common_backHome</a>
   </div>
 
 </main>
 
 <footer class="foot">
   <div class="wrap">
-    <p data-i18n="site.footer_note">$msg_site_footer_note</p>
-    <p class="foot-copy" data-i18n="site.footer_copyright">$msg_site_footer_copyright</p>
-    <p><span data-i18n="result.footerFormat">文件名格式：</span><code>游戏ID-图片昵称.png</code><span>；重名会自动加 </span><code>-2</code><span>，总长不超过 64 个字符。</span></p>
+    <p>$msg_site_footer_note</p>
+    <p class="foot-copy">$msg_site_footer_copyright</p>
+    <p>$msg_result_footerFormat</p>
   </div>
 </footer>
 
@@ -103,14 +101,14 @@
 
   var statusText = document.getElementById('statusText');
   var renamedText = document.getElementById('renamedText');
-  /* 服务端给的中文原文为空就永远隐藏；英文模式下引擎会把 textContent 换成非空英文，
-     所以不能看「当前文本」，要在引擎动手之前把原始状态记下来。 */
-  var renamedIsEmpty = !renamedText || renamedText.textContent.trim() === '';
-
+  /* 文案全部由服务端按请求语言渲染好，前端不再改这些文字。
+     「名字已更新」那句只有真的改过名才非空，空的时候直接隐藏。 */
   if (statusText && !statusText.textContent.trim()) {
     statusText.textContent = t('result.statusDefault');
   }
-  if (renamedText && renamedIsEmpty) { renamedText.classList.add('hidden'); }
+  if (renamedText && !renamedText.textContent.trim()) {
+    renamedText.classList.add('hidden');
+  }
 
   function legacyCopy(text) {
     var ta = document.createElement('textarea');

@@ -885,22 +885,21 @@ public final class WebServer {
         return serveRenderedPage(exchange, html, page, values);
     }
 
-    /** 结果页要按图片状态给出文案键和链接。 */
+    /** 结果页要按图片状态给出文案和链接。文案来自语言文件，按请求语言渲染。 */
     private void addResultValues(HttpExchange exchange, Map<String, String> values,
                                  String player, boolean verified) {
+        String lang = resolveLang(exchange);
         String name = queryParam(exchange, "name");
         boolean renamed = "1".equals(queryParam(exchange, "renamed"));
-        values.put("renamed_key", renamed ? "status.renamed" : "");
-        values.put("renamed_text", renamed ? "名字已更新。" : "");
+        values.put("renamed_text", renamed
+                ? messages.html(lang, "status.renamed") : "");
 
         UploadStore.Item item = Texts.isSafeFileName(name, config.maxNameLength)
                 ? store.get(name) : null;
         if (item == null) {
             values.put("name", "");
             values.put("nickname", "");
-            values.put("status_key", "status.unknown");
-            values.put("status_params", "");
-            values.put("status_text", "找不到这张图片。");
+            values.put("status_text", messages.html(lang, "status.unknown"));
             values.put("url", "");
             values.put("can_rename", "");
             values.put("thumb_params", "");
@@ -915,25 +914,16 @@ public final class WebServer {
                 "alt:{\"name\":\"" + jsonSafe(item.name) + "\"}"));
 
         if (UploadStore.STATUS_PUBLISHED.equals(item.status)) {
-            values.put("status_key", "status.published");
-            values.put("status_text", "已发布，可以直接在游戏里贴了。");
+            values.put("status_text", messages.html(lang, "status.published"));
             values.put("url", Texts.escapeHtml(config.uploadUrl(item.name)));
         } else if (pending) {
-            values.put("status_key", "status.pending");
-            values.put("status_text", "已提交，等待站长审核。审核通过后就能在游戏里贴了。");
+            values.put("status_text", messages.html(lang, "status.pending"));
             values.put("url", "");
         } else {
             String reason = item.rejectedReason == null ? "" : item.rejectedReason;
-            if (reason.isEmpty()) {
-                values.put("status_key", "status.rejected");
-                values.put("status_text", "这张图没有通过审核。");
-                values.put("status_params", "");
-            } else {
-                values.put("status_key", "status.rejected_reason");
-                values.put("status_text", "这张图没有通过审核（原因：" + reason + "）。");
-                values.put("status_params", Texts.escapeHtmlAttr(
-                        "{\"reason\":\"" + jsonSafe(reason) + "\"}"));
-            }
+            values.put("status_text", reason.isEmpty()
+                    ? messages.html(lang, "status.rejected")
+                    : messages.html(lang, "status.rejected_reason", "reason", reason));
             values.put("url", "");
         }
     }
@@ -969,15 +959,18 @@ public final class WebServer {
         Map<String, String> substituted = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : messages.table(lang).entrySet()) {
             String key = entry.getKey();
+            // html() = 转义 + 反引号变 <code>，所以页面上可以直接放这段 HTML
             String value = key.equals("site.footer_note")
-                    ? messages.get(lang, key, "motd", motd)
+                    ? messages.html(lang, key, "motd", motd)
                     : key.equals("site.footer_copyright")
-                            ? messages.get(lang, key, "server", server)
-                            : Messages.stripPlaceholders(entry.getValue());
+                            ? messages.html(lang, key, "server", server)
+                            : messages.html(lang, key);
+            // 注入给前端的表用的是同一份值（已转义、已带 <code>），
+            // 前端引擎按 innerHTML 应用，跟服务端渲染出来的一致。
             substituted.put(key, value);
-            // 转义后当成模板变量：键里的点换成下划线，于是 yml 里任何一个键
+            // 键里的点换成下划线，于是 yml 里任何一个键
             // 都能像 $msg_upload_nicknamePlaceholder 这样直接写进页面。
-            values.put("msg_" + key.replace('.', '_'), Texts.escapeHtml(value));
+            values.put("msg_" + key.replace('.', '_'), value);
         }
         values.put("msg_site_show_manual_claim", config.showManualClaim ? "1" : "");
         values.put("msg_site_allow_rename", config.allowRename ? "1" : "");

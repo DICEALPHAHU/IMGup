@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title data-i18n="index.title">$msg_site_title</title>
+<title>$msg_index_title</title>
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/i18n.js"></script>
 </head>
@@ -14,65 +14,65 @@
   <div class="wrap topbar-inner">
     <a class="brand" href="/">
       <span class="brand-mark" aria-hidden="true">🖼</span>
-      <span class="brand-text" data-i18n="common.brand">$msg_site_brand</span>
+      <span class="brand-text">$msg_site_brand</span>
     </a>
-    <nav class="topnav"><a href="/admin" data-i18n="site.nav_admin">$msg_site_nav_admin</a></nav>
+    <nav class="topnav"><a href="/admin">$msg_site_nav_admin</a></nav>
   </div>
 </header>
 
 <main class="wrap">
 
   <div class="page-head">
-    <h1 class="page-title"><span class="icon" aria-hidden="true">📮</span><span data-i18n="index.heading">$msg_site_home_heading</span></h1>
-    <p class="lede"><span data-i18n="index.lede">$msg_site_home_lede</span><code>/imgup 你的上传码</code><span data-i18n="index.ledeSuffix"> 完成确认，就可以上传图片了。</span></p>
+    <h1 class="page-title"><span class="icon" aria-hidden="true">📮</span><span>$msg_site_home_heading</span></h1>
+    <p class="lede">$msg_site_home_lede</p>
   </div>
 
 
   <section class="panel">
-    <h2 class="panel-title" data-i18n="index.step1Title">$msg_site_home_first_step_title</h2>
-    <p class="muted" id="getHint"><span data-i18n="index.getHint">点下面的按钮生成上传码，然后在游戏聊天框里输入 </span><code>/imgup 上传码</code><span data-i18n="index.getHintSuffix">。上传码 5 分钟内有效，网页会自动检测你的确认。</span></p>
+    <h2 class="panel-title">$msg_site_home_first_step_title</h2>
+    <p class="muted" id="getHint">$msg_index_getHint</p>
 
-    <button class="btn btn-primary btn-block btn-lg" type="button" id="newCodeBtn" data-i18n="index.newCode">$msg_site_home_button</button>
+    <button class="btn btn-primary btn-block btn-lg" type="button" id="newCodeBtn">$msg_site_home_button</button>
 
     <div class="hidden" id="codeArea">
-      <p class="sub-title" data-i18n="index.yourCode">你的上传码（点击可复制）</p>
+      <p class="sub-title">$msg_index_yourCode</p>
       <button class="code-box" type="button" id="codeBox" data-i18n-attr="title:index.codeBoxTitle" title="点击复制上传码">--------</button>
       <span class="field-hint" id="copyState" role="status"></span>
       <p class="progress-text" id="countdown"></p>
       <p class="muted" id="pollState"></p>
       <div class="alert alert-ok hidden" id="claimedMsg" role="status"></div>
       <div class="alert alert-error hidden" id="codeMsg" role="alert"></div>
-      <p class="panel-note"><span data-i18n="index.gameCommand">在游戏里输入的指令是：</span><code id="gameHint">/imgup --------</code></p>
+      <p class="panel-note"><span>$msg_index_gameCommand</span><code id="gameHint">/imgup --------</code></p>
     </div>
   </section>
 
   <section class="panel">
-    <h2 class="panel-title" data-i18n="index.step2Title">$msg_site_home_second_step_title</h2>
-    <p class="muted" data-i18n="index.step2Hint">如果自动检测没有反应，可以在游戏里确认之后，把同一个上传码填到这里手动进入。</p>
+    <h2 class="panel-title">$msg_site_home_second_step_title</h2>
+    <p class="muted">$msg_index_step2Hint</p>
 
     <form id="claimForm" novalidate>
       <div class="field">
-        <label for="codeInput" data-i18n="index.codeLabel">8 位上传码</label>
+        <label for="codeInput">$msg_index_codeLabel</label>
         <input class="input input-code" type="text" id="codeInput" name="code" maxlength="8"
                inputmode="text" autocomplete="one-time-code" autocapitalize="characters"
                autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="ABCD2345" required>
-        <span class="field-hint" data-i18n="index.codeHint">不区分大小写，会自动去掉空格；不含容易看错的 I、O、0、1。</span>
+        <span class="field-hint">$msg_index_codeHint</span>
       </div>
 
       <div class="alert alert-error hidden" id="claimMsg" role="alert"></div>
 
-      <button class="btn btn-primary btn-block" type="submit" id="claimBtn" data-i18n="index.claimBtn">我已确认，进入上传</button>
+      <button class="btn btn-primary btn-block" type="submit" id="claimBtn">$msg_index_claimBtn</button>
     </form>
   </section>
 
-  <p class="muted" data-i18n="index.privacyNote">上传码只用于证明「这个浏览器和这个游戏 ID 是同一个人」，不会要求你输入游戏密码。</p>
+  <p class="muted">$msg_index_privacyNote</p>
 
 </main>
 
 <footer class="foot">
   <div class="wrap">
-    <p data-i18n="site.footer_note">$msg_site_footer_note</p>
-    <p class="foot-copy" data-i18n="site.footer_copyright">$msg_site_footer_copyright</p>
+    <p>$msg_site_footer_note</p>
+    <p class="foot-copy">$msg_site_footer_copyright</p>
   </div>
 </footer>
 

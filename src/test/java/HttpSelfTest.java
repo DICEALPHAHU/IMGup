@@ -139,6 +139,7 @@ public final class HttpSelfTest {
             testClientLocaleMapping();
             testGameMessagesAreBilingual();
             testInjectedMessagesHaveNoRawPlaceholders();
+            testFooterUsesInlineCode();
             testMessageFileUpgradeMerge();
         } finally {
             server.stop();
@@ -492,6 +493,30 @@ public final class HttpSelfTest {
         String noArgs = messages.get("zh", "game.approved");
         check("没给替换值时占位符被清掉（不露 {name}）", !noArgs.contains("{name}"),
                 "拿到 " + noArgs);
+    }
+
+    // ------------------------------------------ 页脚的行内代码
+
+    /** 页脚里的 motd 和 /image create 要渲染成 <code> 标签。 */
+    private static void testFooterUsesInlineCode() throws Exception {
+        section("页脚用 <code> 标出技术名词");
+        String html = get("/").text()
+                .replaceAll("(?s)<script>window\\.IMGUP_.*?</script>", "");
+
+        check("motd 被包在 <code> 里",
+                html.contains("<code>Example MOTD</code>"),
+                "页脚里没找到 <code>Example MOTD</code>");
+        check("/image create 被包在 <code> 里",
+                html.contains("<code>/image create</code>"),
+                "页脚里没找到 <code>/image create</code>");
+        check("反引号没有留在页面上", !html.contains("`"),
+                "页面上还露着反引号");
+        check("没有把标签转义成文本", !html.contains("&lt;code&gt;"),
+                "code 标签被当成文本显示了");
+
+        // 注入的那张表里也应该是同样的 HTML，前端覆盖时才不会丢样式
+        String table = html.contains("<code>/image create</code>") ? "ok" : "";
+        check("服务端渲染与注入表一致", !table.isEmpty());
     }
 
     // ------------------------------------------ 语言文件升级合并
