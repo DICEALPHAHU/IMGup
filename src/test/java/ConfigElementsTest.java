@@ -85,7 +85,7 @@ public final class ConfigElementsTest {
         WebServer server = new WebServer(Logger.getLogger("test"), config, store,
                 new Sessions(3600_000L, 300_000L), messages,
                 new WebServer.GameBridge() {
-                    public void notify(String player, String message) {
+                    public void notify(String player, String key, String... pairs) {
                     }
 
                     public boolean isOnline(String player) {

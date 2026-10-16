@@ -84,8 +84,13 @@ public final class HttpSelfTest {
         server = new WebServer(java.util.logging.Logger.getLogger("imgup-test"),
                 config, store, sessions, messages, new WebServer.GameBridge() {
             @Override
-            public void notify(String player, String message) {
-                notified.add(player + ": " + message);
+            public void notify(String player, String key, String... pairs) {
+                // 现在传的是语言文件的键 + {名字} 替换对，记下来供断言使用
+                StringBuilder sb = new StringBuilder(player).append(": ").append(key);
+                for (int i = 0; i + 1 < pairs.length; i += 2) {
+                    sb.append(' ').append(pairs[i]).append('=').append(pairs[i + 1]);
+                }
+                notified.add(sb.toString());
             }
 
             @Override
@@ -131,6 +136,9 @@ public final class HttpSelfTest {
             testAdminApproveRejectDelete();
             testAdminApproveAll();
             testAdminDisabled();
+            testClientLocaleMapping();
+            testGameMessagesAreBilingual();
+            testInjectedMessagesHaveNoRawPlaceholders();
         } finally {
             server.stop();
         }
@@ -233,7 +241,9 @@ public final class HttpSelfTest {
         check("直接发布（auto_publish=true）", "published".equals(body.get("status")),
                 "状态 " + body.get("status"));
         check("给了图片地址", Json.string(body, "url").contains("Steve-"));
-        check("上传后通知了玩家", notified.stream().anyMatch(s -> s.startsWith("Steve:")),
+        check("上传后通知了玩家（用语言键而不是写死的文案）",
+                notified.stream().anyMatch(n -> n.startsWith("Steve: game.notify_uploaded")
+                        && n.contains(name)),
                 "通知记录 " + notified);
 
         Reply result = get("/result?name=" + enc(name), client);
@@ -404,6 +414,143 @@ public final class HttpSelfTest {
                 "拿到 " + Json.parseObject(enLangs.text()).get("current"));
     }
 
+    // ------------------------------------------------ 游戏内消息的多语言
+
+    private static void testClientLocaleMapping() throws Exception {
+        section("按玩家客户端语言选文案");
+        // Minecraft 客户端给的是「语言_国家」形式
+        check("zh_cn -> zh", "zh".equals(messages.forClientLocale("zh_cn")),
+                "拿到 " + messages.forClientLocale("zh_cn"));
+        check("zh_tw 也回退到 zh（没有 zh_tw.yml）",
+                "zh".equals(messages.forClientLocale("zh_tw")),
+                "拿到 " + messages.forClientLocale("zh_tw"));
+        check("en_us -> en", "en".equals(messages.forClientLocale("en_us")),
+                "拿到 " + messages.forClientLocale("en_us"));
+        check("en_gb -> en", "en".equals(messages.forClientLocale("en_gb")),
+                "拿到 " + messages.forClientLocale("en_gb"));
+        check("大写也认", "en".equals(messages.forClientLocale("EN_US")),
+                "拿到 " + messages.forClientLocale("EN_US"));
+        check("连字符形式也认", "en".equals(messages.forClientLocale("en-US")),
+                "拿到 " + messages.forClientLocale("en-US"));
+        // 玩家用了一门站长没放语言文件的语言：给默认语言，不能给键名
+        check("日语没有文件 -> 回退默认语言",
+                "zh".equals(messages.forClientLocale("ja_jp")),
+                "拿到 " + messages.forClientLocale("ja_jp"));
+        check("null -> 默认语言", "zh".equals(messages.forClientLocale(null)),
+                "拿到 " + messages.forClientLocale(null));
+        check("空串 -> 默认语言", "zh".equals(messages.forClientLocale("  ")),
+                "拿到 " + messages.forClientLocale("  "));
+    }
+
+    private static void testGameMessagesAreBilingual() throws Exception {
+        section("游戏内消息：同键不同语言，且都不缺");
+        String[] keys = {
+                "game.prefix", "game.confirm_ok", "game.confirm_bad_format",
+                "game.confirm_unknown", "game.notify_uploaded",
+                "game.notify_uploaded_pending", "game.notify_approved",
+                "game.notify_rejected", "game.list_empty", "game.list_header",
+                "game.list_line", "game.usage_header", "game.usage_player",
+                "game.approved", "game.rejected", "game.not_found",
+                "game.no_permission_admin", "game.no_permission_use",
+                "game.web_running", "game.web_stopped", "game.info_header",
+        };
+        int missing = 0;
+        int same = 0;
+        for (String key : keys) {
+            String zh = messages.get("zh", key);
+            String en = messages.get("en", key);
+            // get() 找不到键时会把键名本身返回，那就是漏了
+            if (key.equals(zh) || key.equals(en)) {
+                missing++;
+                System.out.println("  [!!]   " + key + " 在某个语言里没定义");
+                continue;
+            }
+            if (zh.equals(en)) {
+                same++;
+                System.out.println("  [!!]   " + key + " 两种语言文案一样：" + zh);
+            }
+        }
+        check("所有 game.* 键两种语言都有定义", missing == 0, missing + " 个缺失");
+        check("两种语言的文案确实不同（真的翻译了）", same == 0, same + " 个相同");
+
+        // 占位符替换要生效，且不能把 {xxx} 露在页面上
+        String zhLine = messages.get("zh", "game.list_line",
+                "dot", "●", "name", "Steve-海报.png", "width", "640",
+                "height", "400", "size", "12 KB", "player", "Steve");
+        check("占位符被替换", zhLine.contains("Steve-海报.png") && !zhLine.contains("{name}"),
+                "拿到 " + zhLine);
+        check("中文行用了中文的「来自」", zhLine.contains("来自"), "拿到 " + zhLine);
+
+        String enLine = messages.get("en", "game.list_line",
+                "dot", "*", "name", "Steve-poster.png", "width", "640",
+                "height", "400", "size", "12 KB", "player", "Steve");
+        check("英文行用英文", enLine.contains("by ") && !enLine.contains("来自"),
+                "拿到 " + enLine);
+
+        // 缺参数时不能把 {name} 这种东西留在聊天框里
+        String noArgs = messages.get("zh", "game.approved");
+        check("没给替换值时占位符被清掉（不露 {name}）", !noArgs.contains("{name}"),
+                "拿到 " + noArgs);
+    }
+
+    // ------------------------------------------ 注入给前端的文案表
+
+    private static void testInjectedMessagesHaveNoRawPlaceholders() throws Exception {
+        section("注入的文案表：不能残留 {占位符}");
+        String html = get("/").text();
+
+        // 从 <script>window.IMGUP_MESSAGES={...};window.IMGUP_LANG=...</script> 里抠出来
+        int start = html.indexOf("window.IMGUP_MESSAGES=");
+        if (start < 0) {
+            check("页面里有注入的文案表", false, "没找到 window.IMGUP_MESSAGES");
+            return;
+        }
+        start += "window.IMGUP_MESSAGES=".length();
+        int end = html.indexOf(";window.IMGUP_LANG=", start);
+        if (end < 0) {
+            check("注入的文案表后面跟着语言标记", false, "没找到 ;window.IMGUP_LANG=");
+            return;
+        }
+        // jsonOf 会把 < 转成 \u003c，这里还原后再解析
+        String raw = html.substring(start, end).replace("\\u003c", "<");
+
+        Map<String, Object> table;
+        try {
+            table = Json.parseObject(raw);
+        } catch (RuntimeException e) {
+            check("注入的表是合法 JSON", false, e.getMessage());
+            return;
+        }
+        check("注入的表能解析", !table.isEmpty(), "解析出 " + table.size() + " 个键");
+
+        // 1) 任何值里都不能有没替换掉的 {占位符}
+        java.util.regex.Pattern placeholder =
+                java.util.regex.Pattern.compile("\\{[a-zA-Z_][a-zA-Z0-9_]*\\}");
+        java.util.List<String> leaked = new java.util.ArrayList<>();
+        for (Map.Entry<String, Object> entry : table.entrySet()) {
+            String value = String.valueOf(entry.getValue());
+            if (placeholder.matcher(value).find()) {
+                leaked.add(entry.getKey() + "=" + value);
+            }
+        }
+        check("没有任何未替换的 {占位符}", leaked.isEmpty(),
+                "这些键还带着占位符：" + leaked);
+
+        // 2) 页脚已经是最终文案（含真实 motd / 服务器名）
+        String footer = String.valueOf(table.get("site.footer_note"));
+        check("页脚文案含真实 motd", footer.contains("Example MOTD"),
+                "拿到 " + footer);
+        check("页脚文案不含 {motd}", !footer.contains("{motd}"), "拿到 " + footer);
+        String copyright = String.valueOf(table.get("site.footer_copyright"));
+        check("版权行含真实服务器名", copyright.contains("Example Server"),
+                "拿到 " + copyright);
+        check("版权行不含 {server}", !copyright.contains("{server}"), "拿到 " + copyright);
+
+        // 3) 游戏内消息也在表里（前端切语言时如果要用到，得有）
+        check("表里有 game.confirm_ok", table.containsKey("game.confirm_ok"));
+        check("表里有 game.notify_uploaded", table.containsKey("game.notify_uploaded"));
+    }
+
     // ------------------------------------------------------------ 后台
 
     private static void testAdminRequiresLogin() throws Exception {
@@ -478,8 +625,10 @@ public final class HttpSelfTest {
                 "published".equals(Json.parseObject(approve.text()).get("status")));
         check("文件移到 Images 目录", Files.exists(imagesDir.resolve(a)));
         check("pending 里没有残留", !Files.exists(dataDir.resolve("pending").resolve(a)));
-        check("通过后通知了玩家",
-                notified.stream().anyMatch(n -> n.contains(a)));
+        check("通过后通知了玩家（键 + 文件名）",
+                notified.stream().anyMatch(n -> n.startsWith("Adm: game.notify_approved")
+                        && n.contains(a)),
+                "通知记录 " + notified);
 
         // 拒绝：文件移到 rejected/
         String b = uploadAsPending(admin, "Adm", "待拒绝");
@@ -547,7 +696,7 @@ public final class HttpSelfTest {
         WebServer offServer = new WebServer(java.util.logging.Logger.getLogger("imgup-off"),
                 off, new UploadStore(offDir.resolve("ImgUp"), offDir.resolve("Images")),
                 new Sessions(3600_000L, 300_000L), offMessages, new WebServer.GameBridge() {
-            public void notify(String player, String message) {
+            public void notify(String player, String key, String... pairs) {
             }
 
             public boolean isOnline(String player) {

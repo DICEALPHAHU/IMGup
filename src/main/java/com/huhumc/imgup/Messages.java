@@ -164,6 +164,34 @@ public final class Messages {
     }
 
     /**
+     * 按玩家客户端的语言挑一门文案。
+     *
+     * Minecraft 客户端给的是 {@code 语言_国家} 形式，例如 {@code zh_cn}、
+     * {@code en_us}、{@code zh_tw}。这里只取语言部分去找 messages/ 下的文件；
+     * 找不到（比如玩家用日语，但站长没放 jp.yml）就回退到默认语言，
+     * 所以永远不会出现「没有文案」的情况。
+     *
+     * @param clientLocale 玩家的客户端语言，可以为 null
+     */
+    public String forClientLocale(String clientLocale) {
+        if (clientLocale == null || clientLocale.isBlank()) {
+            return defaultLang;
+        }
+        String value = clientLocale.trim().toLowerCase(Locale.ROOT).replace('-', '_');
+        // 先试整串（站长可能真的放了 zh_cn.yml），再试语言部分
+        if (has(value)) {
+            return value;
+        }
+        int underscore = value.indexOf('_');
+        String language = underscore > 0 ? value.substring(0, underscore) : value;
+        if (has(language)) {
+            return language;
+        }
+        // 玩家用了一门站长没有的语言：给默认语言，别给键名
+        return defaultLang;
+    }
+
+    /**
      * 某门语言的显示名 —— 取自该语言文件里的 meta.name，写的是这门语言自己的叫法
      * （简体中文对应「中文（简体）」，英文对应「English」）。
      */
@@ -190,6 +218,14 @@ public final class Messages {
      * 保证页面上永远不会出现空白。
      */
     public String get(String lang, String key) {
+        // 没给替换值的占位符直接去掉 —— 否则聊天框里会露出 {name} 这种东西。
+        // 注意：两参版也必须做这件事。Java 会优先选它而不是下面的 varargs 版本，
+        // 只在 varargs 版里剥离会导致 get(lang, key) 漏掉处理（踩过这个坑）。
+        return stripPlaceholders(raw(lang, key));
+    }
+
+    /** 原样返回，不做占位符处理。 */
+    public String raw(String lang, String key) {
         if (key == null || key.isEmpty()) {
             return "";
         }
@@ -208,6 +244,11 @@ public final class Messages {
         return value == null ? key : value;
     }
 
+    /** 把 {xxx} 形式、但没有提供值的占位符去掉。 */
+    public static String stripPlaceholders(String text) {
+        return text == null ? "" : text.replaceAll("\\{[a-zA-Z_][a-zA-Z0-9_]*\\}", "");
+    }
+
     /**
      * 取文案并替换 {名字} 占位符。
      *
@@ -215,12 +256,11 @@ public final class Messages {
      * {motd} / {server}，运行时把实时值填进去。
      */
     public String get(String lang, String key, String... pairs) {
-        String text = get(lang, key);
+        String text = raw(lang, key);
         for (int i = 0; i + 1 < pairs.length; i += 2) {
             text = text.replace("{" + pairs[i] + "}", pairs[i + 1] == null ? "" : pairs[i + 1]);
         }
-        // 没提供值的占位符直接去掉，免得页面上露出 {motd} 这种东西
-        return text.replaceAll("\\{[a-zA-Z_][a-zA-Z0-9_]*\\}", "");
+        return stripPlaceholders(text);
     }
 
     private String lookup(String lang, String key) {

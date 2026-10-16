@@ -219,6 +219,18 @@ with zipfile.ZipFile(jar) as zf:
         sys.exit("WebServer.class 里出现了写死的版本号 " + literal.decode()
                  + "；版本号只能来自 plugin.yml，请不要在代码里写死")
     print("    版本号没有在 WebServer 里写死")
+
+    # 代码里引用的 game.* 键必须都在语言文件里定义了。
+    # 打错一个字（game.confrim_ok）不会报错，但玩家聊天框里就会看到键名本身。
+    import glob
+    used_game = set()
+    for src in glob.glob("src/main/java/**/*.java", recursive=True):
+        with open(src, encoding="utf-8") as fh:
+            used_game |= set(re.findall(r'"(game\.[a-z_]+)"', fh.read()))
+    missing_game = sorted(used_game - tables["zh"])
+    if missing_game:
+        sys.exit("代码里用了但语言文件里没定义的 game.* 键：" + str(missing_game))
+    print("    用到的 " + str(len(used_game)) + " 个 game.* 键都有定义")
 PY
 
 ls -la "$OUT_DIR/$JAR_NAME"

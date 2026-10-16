@@ -26,8 +26,11 @@ import java.util.Locale;
  *          /imgup info                —— 看运行状态
  *          /imgup reload              —— 重读 config.yml 并重启网站
  *
- * 审核做在游戏里而不是网页上，是为了不再引一套管理员密码：权限直接用
- * LuckPerms 的 imgup.admin，谁有权限谁就能审，和服务器其它权限体系统一。
+ * 审核在游戏内和网页后台（/admin）都能做，改的是同一份数据。
+ *
+ * 所有给玩家看的文字都来自 messages/&lt;语言&gt;.yml，按玩家客户端语言自动选 ——
+ * 中文客户端看中文，英文客户端看英文；玩家用的语言没有对应文件时回退到
+ * config.yml 里的 language。
  */
 public final class ImgUpCommand implements CommandExecutor, TabCompleter {
 
@@ -59,34 +62,34 @@ public final class ImgUpCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 if (args.length < 2) {
-                    sender.sendMessage(ChatColor.RED + "用法：" + ChatColor.WHITE
-                            + "/" + label + " ok <文件名>");
+                    sender.sendMessage(ChatColor.RED
+                            + plugin.msg(sender, "game.need_ok_arg", "label", label));
                     return true;
                 }
-                decide(sender, join(args, 1), true, "");
+                decide(sender, label, join(args, 1), true, "");
             }
             case "no", "reject", "deny" -> {
                 if (!requireAdmin(sender)) {
                     return true;
                 }
                 if (args.length < 2) {
-                    sender.sendMessage(ChatColor.RED + "用法：" + ChatColor.WHITE
-                            + "/" + label + " no <文件名> [原因]");
+                    sender.sendMessage(ChatColor.RED
+                            + plugin.msg(sender, "game.need_no_arg", "label", label));
                     return true;
                 }
                 // 文件名里没有空格（玩家名和昵称都净化过），所以 args[1] 就是文件名
-                decide(sender, args[1], false, args.length > 2 ? join(args, 2) : "");
+                decide(sender, label, args[1], false, args.length > 2 ? join(args, 2) : "");
             }
             case "del", "delete", "rm" -> {
                 if (!requireAdmin(sender)) {
                     return true;
                 }
                 if (args.length < 2) {
-                    sender.sendMessage(ChatColor.RED + "用法：" + ChatColor.WHITE
-                            + "/" + label + " del <文件名>");
+                    sender.sendMessage(ChatColor.RED
+                            + plugin.msg(sender, "game.need_del_arg", "label", label));
                     return true;
                 }
-                delete(sender, join(args, 1));
+                delete(sender, label, join(args, 1));
             }
             case "info", "status" -> info(sender, label);
             case "reload" -> {
@@ -94,17 +97,18 @@ public final class ImgUpCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 plugin.reloadAll();
-                sender.sendMessage(ChatColor.GREEN + "ImgUp 配置已重新加载，网站："
-                        + plugin.webStatus());
+                sender.sendMessage(ChatColor.GREEN + plugin.msg(sender, "game.reloaded",
+                        "status", plugin.webStatus(sender)));
             }
             default -> {
                 // 不是子命令，那就当上传码处理
                 if (!(sender instanceof Player player)) {
-                    sender.sendMessage(ChatColor.RED + "上传码要在游戏里确认（或用上面的管理子命令）");
+                    sender.sendMessage(ChatColor.RED
+                            + plugin.msg(sender, "game.code_player_only"));
                     return true;
                 }
                 if (plugin.requirePermission() && !player.hasPermission("imgup.use")) {
-                    player.sendMessage(ChatColor.RED + "你没有确认上传码的权限（imgup.use）");
+                    player.sendMessage(ChatColor.RED + plugin.msg(player, "game.no_permission_use"));
                     return true;
                 }
                 player.sendMessage(plugin.confirm(player, args[0]));
@@ -118,7 +122,7 @@ public final class ImgUpCommand implements CommandExecutor, TabCompleter {
     private void list(CommandSender sender, String label, String rawPage) {
         List<UploadStore.Item> pending = plugin.store().byStatus(UploadStore.STATUS_PENDING);
         if (pending.isEmpty()) {
-            sender.sendMessage(ChatColor.GRAY + "现在没有待审核的图片。");
+            sender.sendMessage(ChatColor.GRAY + plugin.msg(sender, "game.list_empty"));
             return;
         }
         int page;
@@ -130,84 +134,98 @@ public final class ImgUpCommand implements CommandExecutor, TabCompleter {
         int pages = (pending.size() + PAGE_SIZE - 1) / PAGE_SIZE;
         page = Math.min(page, pages);
 
-        sender.sendMessage(ChatColor.GOLD + "待审核图片（" + pending.size() + " 张）"
-                + ChatColor.GRAY + " 第 " + page + "/" + pages + " 页");
+        sender.sendMessage(ChatColor.GOLD + plugin.msg(sender, "game.list_header",
+                "count", String.valueOf(pending.size()),
+                "page", String.valueOf(page),
+                "pages", String.valueOf(pages)));
         int from = (page - 1) * PAGE_SIZE;
         for (int i = from; i < Math.min(from + PAGE_SIZE, pending.size()); i++) {
             UploadStore.Item item = pending.get(i);
-            String dot = plugin.isOnline(item.player)
-                    ? ChatColor.GREEN + "●" : ChatColor.DARK_GRAY + "○";
-            sender.sendMessage("  " + dot + " " + ChatColor.WHITE + item.name
-                    + ChatColor.GRAY + "  " + item.width + "x" + item.height
-                    + "  " + WebServer.humanBytes(item.bytes)
-                    + "  来自 " + (item.player == null || item.player.isEmpty() ? "?" : item.player));
+            sender.sendMessage(ChatColor.WHITE + plugin.msg(sender, "game.list_line",
+                    "dot", plugin.isOnline(item.player) ? "●" : "○",
+                    "name", item.name,
+                    "width", String.valueOf(item.width),
+                    "height", String.valueOf(item.height),
+                    "size", WebServer.humanBytes(item.bytes),
+                    "player", item.player == null || item.player.isEmpty() ? "?" : item.player));
         }
-        sender.sendMessage(ChatColor.GRAY + "通过：" + ChatColor.WHITE + "/" + label
-                + " ok <文件名>" + ChatColor.GRAY + "   拒绝：" + ChatColor.WHITE + "/"
-                + label + " no <文件名> [原因]");
+        sender.sendMessage(ChatColor.GRAY + plugin.msg(sender, "game.list_hint", "label", label));
         if (pages > 1) {
-            sender.sendMessage(ChatColor.GRAY + "翻页：" + ChatColor.WHITE + "/" + label
-                    + " list " + (page < pages ? page + 1 : 1));
+            sender.sendMessage(ChatColor.GRAY + plugin.msg(sender, "game.list_more",
+                    "label", label,
+                    "page", String.valueOf(page < pages ? page + 1 : 1)));
         }
     }
 
-    private void decide(CommandSender sender, String name, boolean approve, String reason) {
+    private void decide(CommandSender sender, String label, String name,
+                        boolean approve, String reason) {
         UploadStore.Item item = plugin.store().get(name);
         if (item == null) {
             // 允许少打扩展名：Player-我的海报 -> Player-我的海报.png
             item = findByPrefix(name);
         }
         if (item == null) {
-            sender.sendMessage(ChatColor.RED + "找不到叫「" + name + "」的图片。"
-                    + "用 /" + "imgup list 看看待审核的文件名。");
+            sender.sendMessage(ChatColor.RED + plugin.msg(sender, "game.not_found",
+                    "name", name, "label", label));
             return;
         }
         try {
             if (approve) {
                 UploadStore.Item done = plugin.store().approve(item.name);
-                sender.sendMessage(ChatColor.GREEN + "已通过：" + ChatColor.WHITE + done.name
-                        + ChatColor.GRAY + "（已进入 Images 目录，玩家现在可以贴了）");
-                plugin.notify(done.player,
-                        "你的图片「" + done.name + "」审核通过了，可以在游戏里贴了");
+                sender.sendMessage(ChatColor.GREEN + plugin.msg(sender, "game.approved",
+                        "name", done.name));
+                plugin.notifyPlayer(done.player, "game.notify_approved", "name", done.name);
             } else {
                 UploadStore.Item done = plugin.store().reject(item.name, reason);
-                sender.sendMessage(ChatColor.YELLOW + "已拒绝：" + ChatColor.WHITE + done.name
-                        + (reason.isEmpty() ? "" : ChatColor.GRAY + "（原因：" + reason + "）"));
-                plugin.notify(done.player, "你的图片「" + done.name + "」没有通过审核"
-                        + (reason.isEmpty() ? "" : "，原因：" + reason));
+                sender.sendMessage(ChatColor.YELLOW + (reason.isEmpty()
+                        ? plugin.msg(sender, "game.rejected", "name", done.name)
+                        : plugin.msg(sender, "game.rejected_reason",
+                                "name", done.name, "reason", reason)));
+                if (reason.isEmpty()) {
+                    plugin.notifyPlayer(done.player, "game.notify_rejected", "name", done.name);
+                } else {
+                    plugin.notifyPlayer(done.player, "game.notify_rejected_reason",
+                            "name", done.name, "reason", reason);
+                }
             }
         } catch (IOException e) {
-            sender.sendMessage(ChatColor.RED + "操作失败：" + e.getMessage());
+            sender.sendMessage(ChatColor.RED + plugin.msg(sender, "game.failed",
+                    "error", String.valueOf(e.getMessage())));
         }
     }
 
-    private void delete(CommandSender sender, String name) {
+    private void delete(CommandSender sender, String label, String name) {
         UploadStore.Item item = plugin.store().get(name);
         String target = item != null ? item.name : name;
         if (plugin.store().delete(target)) {
-            sender.sendMessage(ChatColor.GREEN + "已删除：" + ChatColor.WHITE + target);
+            sender.sendMessage(ChatColor.GREEN
+                    + plugin.msg(sender, "game.deleted", "name", target));
         } else {
-            sender.sendMessage(ChatColor.RED + "找不到叫「" + name + "」的图片");
+            sender.sendMessage(ChatColor.RED + plugin.msg(sender, "game.not_found",
+                    "name", name, "label", label));
         }
     }
 
     private void info(CommandSender sender, String label) {
         var counts = plugin.store().counts();
-        sender.sendMessage(ChatColor.GOLD + "ImgUp " + plugin.getDescription().getVersion()
-                + ChatColor.GRAY + "  网站：" + ChatColor.WHITE + plugin.webStatus());
-        sender.sendMessage(ChatColor.GRAY + "对外地址：" + ChatColor.WHITE + plugin.webConfig().base());
-        sender.sendMessage(ChatColor.GRAY + "图片目录：" + ChatColor.WHITE + plugin.imagesDir());
-        sender.sendMessage(ChatColor.GRAY + "统计：" + ChatColor.WHITE
-                + "待审核 " + counts.get("pending")
-                + "，已发布 " + counts.get("published")
-                + "，已拒绝 " + counts.get("rejected")
-                + "，玩家 " + counts.get("players") + " 人");
-        sender.sendMessage(ChatColor.GRAY + "上传码：" + ChatColor.WHITE
-                + plugin.sessions().pendingCodeCount() + " 个等待确认"
-                + ChatColor.GRAY + "，会话 " + ChatColor.WHITE + plugin.sessions().sessionCount());
+        sender.sendMessage(ChatColor.GOLD + plugin.msg(sender, "game.info_header",
+                "version", plugin.getDescription().getVersion(),
+                "status", plugin.webStatus(sender)));
+        sender.sendMessage(ChatColor.GRAY + plugin.msg(sender, "game.info_url",
+                "url", plugin.webConfig().base()));
+        sender.sendMessage(ChatColor.GRAY + plugin.msg(sender, "game.info_dir",
+                "dir", String.valueOf(plugin.imagesDir())));
+        sender.sendMessage(ChatColor.GRAY + plugin.msg(sender, "game.info_counts",
+                "pending", String.valueOf(counts.get("pending")),
+                "published", String.valueOf(counts.get("published")),
+                "rejected", String.valueOf(counts.get("rejected")),
+                "players", String.valueOf(counts.get("players"))));
+        sender.sendMessage(ChatColor.GRAY + plugin.msg(sender, "game.info_codes",
+                "codes", String.valueOf(plugin.sessions().pendingCodeCount()),
+                "sessions", String.valueOf(plugin.sessions().sessionCount())));
         if (!plugin.webConfig().autoPublish) {
-            sender.sendMessage(ChatColor.GRAY + "当前是" + ChatColor.YELLOW + "人工审核"
-                    + ChatColor.GRAY + "模式：上传的图要你 /" + label + " ok 之后才能贴");
+            sender.sendMessage(ChatColor.GRAY
+                    + plugin.msg(sender, "game.info_manual_review", "label", label));
         }
     }
 
@@ -246,23 +264,30 @@ public final class ImgUpCommand implements CommandExecutor, TabCompleter {
         if (plugin.isAdmin(sender)) {
             return true;
         }
-        sender.sendMessage(ChatColor.RED + "你没有权限（需要 imgup.admin）");
+        sender.sendMessage(ChatColor.RED + plugin.msg(sender, "game.no_permission_admin"));
         return false;
     }
 
     private void usage(CommandSender sender, String label) {
-        sender.sendMessage(ChatColor.GOLD + "ImgUp " + plugin.getDescription().getVersion()
-                + ChatColor.GRAY + "  网站：" + ChatColor.WHITE + plugin.webConfig().base());
-        sender.sendMessage(ChatColor.GRAY + "玩家：" + ChatColor.WHITE + "/" + label
-                + " <上传码>" + ChatColor.GRAY + "  确认上传码（也可以用网页上的按钮）");
+        sender.sendMessage(ChatColor.GOLD + plugin.msg(sender, "game.usage_header",
+                "version", plugin.getDescription().getVersion(),
+                "url", plugin.webConfig().base()));
+        sender.sendMessage(ChatColor.GRAY
+                + plugin.msg(sender, "game.usage_player", "label", label));
         if (plugin.isAdmin(sender)) {
-            sender.sendMessage(ChatColor.GRAY + "站长：");
-            sender.sendMessage(ChatColor.GRAY + "  /" + label + " list [页码]");
-            sender.sendMessage(ChatColor.GRAY + "  /" + label + " ok <文件名>");
-            sender.sendMessage(ChatColor.GRAY + "  /" + label + " no <文件名> [原因]");
-            sender.sendMessage(ChatColor.GRAY + "  /" + label + " del <文件名>");
-            sender.sendMessage(ChatColor.GRAY + "  /" + label + " info");
-            sender.sendMessage(ChatColor.GRAY + "  /" + label + " reload");
+            sender.sendMessage(ChatColor.GRAY + plugin.msg(sender, "game.usage_admin_title"));
+            sender.sendMessage(ChatColor.GRAY
+                    + plugin.msg(sender, "game.usage_list", "label", label));
+            sender.sendMessage(ChatColor.GRAY
+                    + plugin.msg(sender, "game.usage_ok", "label", label));
+            sender.sendMessage(ChatColor.GRAY
+                    + plugin.msg(sender, "game.usage_no", "label", label));
+            sender.sendMessage(ChatColor.GRAY
+                    + plugin.msg(sender, "game.usage_del", "label", label));
+            sender.sendMessage(ChatColor.GRAY
+                    + plugin.msg(sender, "game.usage_info", "label", label));
+            sender.sendMessage(ChatColor.GRAY
+                    + plugin.msg(sender, "game.usage_reload", "label", label));
         }
     }
 

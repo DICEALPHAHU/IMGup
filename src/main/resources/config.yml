@@ -1,27 +1,40 @@
 # ============================================================================
 # ImgUp —— 图片上传站（整个网站就跑在这个插件里）
+# ImgUp — image upload site (the whole website runs inside this plugin)
 # ============================================================================
 #
 # 改完用 /imgup reload（游戏内或控制台）即可生效。
 # 例外：web.port 改了必须重启服务端（端口是在插件启用时绑定的）。
 #
+# Apply changes with /imgup reload (in game or from the console).
+# Exception: web.port needs a full server restart (the port is bound on enable).
+#
 # 这个插件不需要 Docker、不需要 Python、不需要 RCON，也没有 shared_secret ——
 # 网页和插件在同一个进程里，直接内存通信。
+#
+# No Docker, no Python, no RCON, no shared_secret — the web server and the
+# plugin run in the same process and talk through memory.
 
 # ---------------------------------------------------------------------------
-# 网站本体
+# 网站本体 / Web server
 # ---------------------------------------------------------------------------
 web:
   # 是否启用内置网站。关掉后插件只剩 /imgup 指令，完全不开放任何端口。
+  # Enable the built-in website. When off, only the /imgup command remains and
+  # no port is opened at all.
   enabled: true
 
   # 监听端口。★ 想让玩家从外网访问就改这里，
   # 并确认防火墙 / 云安全组放行了这个端口。
+  # Listen port. ★ Change this if players should reach the site from the
+  # internet, and make sure your firewall / cloud security group allows it.
   port: 8091
 
-  # 监听地址。
+  # 监听地址。 / Bind address.
   #   0.0.0.0   = 所有网卡，公网可达（默认）
+  #                all interfaces, reachable from the internet (default)
   #   127.0.0.1 = 只允许本机访问（配合 Nginx 反代时用这个）
+  #                localhost only (use this behind an Nginx reverse proxy)
   host: "0.0.0.0"
 
   # 对外访问地址，用于拼图片链接和复制给玩家的指令，必须玩家能访问到。
@@ -33,28 +46,57 @@ web:
   #
   # 留空时插件会按 host:port 自动推断；但 host 是 0.0.0.0 时只能推成
   # 127.0.0.1，那个地址玩家访问不了，所以对外服务请务必显式填写。
+  #
+  # Public base URL, used to build image links and the commands copied for
+  # players. It must be reachable by your players.
+  #
+  # ★ Empty by default — put your own address here, for example:
+  #     http://YOUR_PUBLIC_IP:8091
+  #     http://your-domain:8091
+  #     https://img.example.com        (Nginx reverse proxy with TLS)
+  #
+  # When empty the plugin guesses from host:port, but with host 0.0.0.0 that
+  # guess becomes 127.0.0.1, which players cannot reach. So if the site is
+  # public, always fill this in explicitly.
   public_base_url: ""
 
   # true  = 玩家上传后立刻发布，可以直接在游戏里贴（默认，省事）
   # false = 先进待审核，用网页后台 /admin 或 /imgup list|ok|no 处理
+  #
+  # true  = publish immediately after upload, ready to use in game (default)
+  # false = hold for review; handle it in the /admin panel or with
+  #         /imgup list|ok|no
   auto_publish: true
 
   # 单个请求的处理超时（秒）。传大图时别设太小。
+  # Per-request timeout in seconds. Do not set this too low for large images.
   request_timeout_seconds: 60
 
   # 是否开放网页后台（顶栏「管理员入口」→ /admin）。
   # 关掉后 /admin 直接 404，审核只能在游戏内用 /imgup list|ok|no 做。
+  #
+  # Enable the web admin panel (the "Admin" link in the top bar → /admin).
+  # When off, /admin returns 404 and review is only possible in game with
+  # /imgup list|ok|no.
   admin_enabled: true
 
   # 网页后台的管理密码。留空则插件第一次启动时自动生成一个并写回这里，
   # 同时打印在服务端日志里（找不到就来这里看）。随时可以改成你自己的。
+  #
+  # Password for the web admin panel. If left empty the plugin generates one on
+  # first start, writes it back here and prints it in the server log. Change it
+  # to your own at any time.
   admin_password: ""
 
 # ---------------------------------------------------------------------------
-# 语言
+# 语言 / Language
 # ---------------------------------------------------------------------------
 # 默认语言：决定玩家打开网页时看到哪一门语言，也决定某个键在其它语言文件里
 # 缺失时回退到哪门语言。必须在 messages/ 下有对应的文件（zh.yml / en.yml）。
+#
+# Default language: which language players see when they open the site, and the
+# fallback language for keys missing from another language file. There must be a
+# matching file in messages/ (zh.yml / en.yml).
 language: zh
 
 # 语言文件目录（相对于插件数据目录）。里面一个语言一个文件，文件名就是语言代码：
@@ -62,46 +104,76 @@ language: zh
 #   plugins/ImgUp/messages/en.yml
 # 想加一门语言就复制一份改名（比如 jp.yml）并把它翻译成日文，
 # 玩家在网页右上角的语言开关里会自动多出这一项。
+#
+# Language file directory (relative to the plugin data folder). One file per
+# language, and the file name is the language code:
+#   plugins/ImgUp/messages/zh.yml
+#   plugins/ImgUp/messages/en.yml
+# To add a language, copy one file (e.g. jp.yml) and translate the values — it
+# then shows up automatically in the language menu at the top right of the site.
 messages_dir: "messages"
 
 # ---------------------------------------------------------------------------
-# 图片处理
+# 图片处理 / Image processing
 # ---------------------------------------------------------------------------
 upload:
   # 单张图片的体积上限（字节）。5MB = 5242880
+  # Maximum size per image, in bytes. 5MB = 5242880
   max_upload_bytes: 5242880
 
   # 长边像素上限，超过会等比缩小（只缩不放）。2048 足够贴海报。
+  # Maximum length of the longer edge; larger images are scaled down
+  # proportionally (never scaled up). 2048 is plenty for a poster.
   max_dimension: 2048
 
   # 总像素上限，防止「解压炸弹」（小文件解出几亿像素把内存撑爆）。
+  # Maximum total pixels, to stop decompression bombs (a tiny file that expands
+  # to hundreds of millions of pixels and exhausts memory).
   max_pixels: 40000000
 
   # JPEG 重新编码的质量（1-100）。90 肉眼几乎无损，文件也不大。
+  # JPEG re-encode quality (1-100). 90 looks lossless and keeps files small.
   jpeg_quality: 90
 
   # 生成的文件名总长上限（含扩展名）。游戏内要手输，别太长。
+  # Maximum length of the generated file name, extension included. Players type
+  # this in game, so keep it short.
   max_name_length: 64
 
   # 玩家能填的昵称长度上限。
+  # Maximum length of the nickname a player may enter.
   max_nickname_length: 32
 
 # 上传码有效期（秒）。太短玩家来不及切窗口，太长则过期的码还能被拿来试。
+# Upload code lifetime in seconds. Too short and players cannot switch windows in
+# time; too long and stale codes can still be tried.
 code_ttl_seconds: 300
 
+# ---------------------------------------------------------------------------
+# 限额 / Limits
+# ---------------------------------------------------------------------------
 limits:
   # 每个玩家 24 小时内的上传张数上限，0 = 不限。
+  # Maximum uploads per player per 24 hours. 0 = unlimited.
   per_player_daily: 20
 
   # 待审核队列上限（auto_publish: false 时才起作用），0 = 不限。
+  # Maximum size of the pending queue (only matters when auto_publish is false).
+  # 0 = unlimited.
   global_pending_max: 200
 
   # 每个 IP 每小时能取多少次上传码，防止刷码。
+  # How many upload codes one IP may request per hour, to stop code farming.
   newcode_per_ip_per_hour: 30
 
 # 是否要求 imgup.use 权限才能用 /imgup 确认上传码。
 # false = 所有人可用；true = 需要在 LuckPerms 里发 imgup.use。
+#
+# Require the imgup.use permission to confirm an upload code with /imgup.
+# false = everyone; true = grant imgup.use (e.g. through LuckPerms).
 require_permission: false
 
 # 玩家上传成功 / 审核结果出来时，是否在游戏内私聊通知玩家。
+# Whether to message the player in game after a successful upload or a review
+# decision.
 notify_player: true

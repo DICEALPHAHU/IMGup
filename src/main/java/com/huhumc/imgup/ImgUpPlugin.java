@@ -190,24 +190,62 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
      * Paper 的 API 不是线程安全的，从别的线程调 getPlayer 之类是未定义行为。
      * 玩家不在线就静默丢弃（比如他网页还开着但已经退出游戏）。
      */
+    /**
+     * 在游戏里给玩家发一条通知。
+     *
+     * message 现在传的是**语言文件里的键**（外加 {名字} 替换），因为这句话要按
+     * 玩家客户端的语言来显示 —— 英文客户端看英文，中文客户端看中文。
+     *
+     * 这个方法可能从 HTTP 请求线程调用，所以**必须**跳回主线程再碰 Bukkit。
+     */
     @Override
-    public void notify(String player, String message) {
+    public void notify(String player, String key, String... pairs) {
+        notifyPlayer(player, key, pairs);
+    }
+
+    /** 通知某个玩家，文案取自语言文件。可以在任意线程调用。 */
+    void notifyPlayer(String player, String key, String... pairs) {
         if (player == null || player.isEmpty() || !webConfig.notifyPlayer) {
             return;
         }
         if (getServer().isPrimaryThread()) {
-            deliver(player, message);
+            deliver(player, key, pairs);
             return;
         }
-        getServer().getScheduler().runTask(this, () -> deliver(player, message));
+        getServer().getScheduler().runTask(this, () -> deliver(player, key, pairs));
     }
 
-    private void deliver(String playerName, String message) {
+    private void deliver(String playerName, String key, String... pairs) {
         Player player = getServer().getPlayerExact(playerName);
         if (player == null || !player.isOnline()) {
+            // 玩家不在线就没法知道他的客户端语言，用默认语言
             return;
         }
-        player.sendMessage(ChatColor.GREEN + "[图片上传] " + ChatColor.WHITE + message);
+        String text = messages.get(langOf(player), key, pairs);
+        player.sendMessage(ChatColor.GREEN + "[" + messages.get(langOf(player), "game.prefix")
+                + "] " + ChatColor.WHITE + text);
+    }
+
+    /**
+     * 该玩家该用哪门语言。
+     *
+     * 用客户端语言（Player#getLocale，形如 zh_cn / en_us）去 messages/ 里找；
+     * 找不到就回退到 config.yml 的 language。控制台也算默认语言。
+     */
+    String langOf(org.bukkit.command.CommandSender sender) {
+        if (sender instanceof Player player) {
+            try {
+                return messages.forClientLocale(player.getLocale());
+            } catch (RuntimeException e) {
+                return messages.defaultLang();
+            }
+        }
+        return messages.defaultLang();
+    }
+
+    /** 按发送者语言取文案并替换 {名字} 占位符。 */
+    String msg(org.bukkit.command.CommandSender sender, String key, String... pairs) {
+        return messages.get(langOf(sender), key, pairs);
     }
 
     /**
@@ -269,13 +307,11 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
      */
     String confirm(Player player, String rawCode) {
         Sessions.ConfirmResult result = sessions.confirm(rawCode, player.getName());
+        String lang = langOf(player);
         return switch (result) {
-            case OK -> ChatColor.GREEN + "上传码已确认" + ChatColor.GRAY
-                    + "，回到网页就能上传图片了（这个码已经作废，不用担心别人看到）";
-            case BAD_FORMAT -> ChatColor.RED + "上传码格式不对" + ChatColor.GRAY
-                    + "（8 位字母数字，不含容易看错的 I、O、0、1。可以直接从网页复制）";
-            case UNKNOWN -> ChatColor.RED + "这个上传码不对或已经过期" + ChatColor.GRAY
-                    + "，请回到网页重新获取一个";
+            case OK -> ChatColor.GREEN + messages.get(lang, "game.confirm_ok");
+            case BAD_FORMAT -> ChatColor.RED + messages.get(lang, "game.confirm_bad_format");
+            case UNKNOWN -> ChatColor.RED + messages.get(lang, "game.confirm_unknown");
         };
     }
 
@@ -314,11 +350,15 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
         return !(sender instanceof Player) || sender.hasPermission("imgup.admin");
     }
 
-    String webStatus() {
+    /** 网站状态，按发送者语言显示。 */
+    String webStatus(org.bukkit.command.CommandSender sender) {
+        String lang = langOf(sender);
         if (web == null) {
-            return "未启动";
+            return messages.get(lang, "game.web_stopped");
         }
-        return web.isRunning() ? ("运行中，端口 " + web.port()) : "启动失败";
+        return web.isRunning()
+                ? messages.get(lang, "game.web_running", "port", String.valueOf(web.port()))
+                : messages.get(lang, "game.web_failed");
     }
 
     static String normalize(String raw) {

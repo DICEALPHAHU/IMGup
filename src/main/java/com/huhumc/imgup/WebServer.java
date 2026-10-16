@@ -39,8 +39,13 @@ public final class WebServer {
 
     /** 和游戏侧交互的桥：只暴露这一个方法给 web 层，避免它直接碰 Bukkit。 */
     public interface GameBridge {
-        /** 在游戏内给玩家发一条提示；玩家不在线时静默忽略。 */
-        void notify(String player, String message);
+        /**
+         * 在游戏内给玩家发一条提示；玩家不在线时静默忽略。
+         *
+         * key 是语言文件里的键，pairs 是 {名字} 替换对（key1, value1, key2, value2…）——
+         * 玩家看到的是他自己客户端语言的那一份文案，而不是某一种写死的语言。
+         */
+        void notify(String player, String key, String... pairs);
 
         /** 玩家是否在线（用于后台列表里显示状态）。 */
         boolean isOnline(String player);
@@ -508,11 +513,10 @@ public final class WebServer {
             return sendJson(exchange, 500, error("storage_error", 500, "保存失败，请稍后重试", null));
         }
 
-        if (game != null) {
-            game.notify(player, config.autoPublish
-                    ? "图片已上传：" + fileName + "，可以直接在游戏里贴了"
-                    : "图片已上传：" + fileName + "，等站长审核通过就能贴了");
-        }
+        // 通知传的是语言文件的键，插件那边按玩家客户端语言取文案
+        notifyPlayer(player, config.autoPublish
+                ? "game.notify_uploaded" : "game.notify_uploaded_pending",
+                "name", fileName);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("ok", true);
@@ -707,10 +711,10 @@ public final class WebServer {
             UploadStore.Item done;
             if (action.equals("approve")) {
                 done = store.approve(name);
-                notifyPlayer(done.player, "你的图片「" + done.name + "」审核通过了，可以在游戏里贴了");
+                notifyPlayer(done.player, "game.notify_approved", "name", done.name);
             } else {
                 done = store.reject(name, "");
-                notifyPlayer(done.player, "你的图片「" + done.name + "」没有通过审核");
+                notifyPlayer(done.player, "game.notify_rejected", "name", done.name);
             }
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("ok", true);
@@ -748,8 +752,7 @@ public final class WebServer {
             try {
                 store.approve(item.name);
                 approved.add(item.name);
-                notifyPlayer(item.player,
-                        "你的图片「" + item.name + "」审核通过了，可以在游戏里贴了");
+                notifyPlayer(item.player, "game.notify_approved", "name", item.name);
             } catch (IOException e) {
                 failed.add(item.name);
             }
@@ -957,13 +960,21 @@ public final class WebServer {
         // 页脚要显示服务器自己的信息，直接从 server.properties 实时取
         String motd = serverMotd();
         String server = serverName();
+
+        // 先算出这门语言下的最终文案（占位符全部换掉），再用于两处：
+        //   1. 服务端渲染时填进 $msg_xxx
+        //   2. 注入给前端的整张表
+        // 两处必须用同一份「已替换」的值：如果注入的表里还留着 {motd}，
+        // 前端引擎会在浏览器里把页脚覆盖成带 {motd} 的样子。
+        Map<String, String> substituted = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : messages.table(lang).entrySet()) {
             String key = entry.getKey();
             String value = key.equals("site.footer_note")
                     ? messages.get(lang, key, "motd", motd)
                     : key.equals("site.footer_copyright")
                             ? messages.get(lang, key, "server", server)
-                            : entry.getValue();
+                            : Messages.stripPlaceholders(entry.getValue());
+            substituted.put(key, value);
             // 转义后当成模板变量：键里的点换成下划线，于是 yml 里任何一个键
             // 都能像 $msg_upload_nicknamePlaceholder 这样直接写进页面。
             values.put("msg_" + key.replace('.', '_'), Texts.escapeHtml(value));
@@ -971,7 +982,7 @@ public final class WebServer {
         values.put("msg_site_show_manual_claim", config.showManualClaim ? "1" : "");
         values.put("msg_site_allow_rename", config.allowRename ? "1" : "");
         values.put("msg_site_show_copy_buttons", config.showCopyButtons ? "1" : "");
-        values.put("messages_json", messagesJson(lang));
+        values.put("messages_json", jsonOf(substituted));
 
         String output = render(html, values);
         // 把当前语言的整张文案表注入成全局对象，i18n.js 启动时合并进字典
@@ -1257,13 +1268,9 @@ public final class WebServer {
      * 注入到页面的 &lt;script&gt; 里，i18n.js 启动时读 window.IMGUP_SITE_EN。
      * 这样「网站元素」的唯一来源就是 config.yml，模板里不用写死任何一句文案。
      */
-    private String messagesJson(String lang) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        for (Map.Entry<String, String> entry : messages.table(lang).entrySet()) {
-            out.put(entry.getKey(), entry.getValue());
-        }
-        // 放进 <script> 里，必须防住 </script> —— 否则文案里出现这几个字符
-        // 就会提前结束脚本块。JSON 里 \u003c 是合法的，浏览器会还原成 <
+    /** 把一张表编成 JSON，并防住 </script>（文案里出现这几个字符会提前结束脚本块）。 */
+    private static String jsonOf(Map<String, String> table) {
+        Map<String, Object> out = new LinkedHashMap<>(table);
         return Json.write(out).replace("<", "\\u003c");
     }
 
@@ -1304,10 +1311,15 @@ public final class WebServer {
         return store.byStatus(UploadStore.STATUS_PENDING);
     }
 
-    /** 供后台用：状态变化后在游戏里通知玩家。 */
-    public void notifyPlayer(String player, String message) {
+    /**
+     * 状态变化后在游戏里通知玩家。
+     *
+     * key 是语言文件里的键（外加 {名字} 替换），不是成品文案 —— 具体显示哪门语言
+     * 由插件按玩家客户端语言决定。
+     */
+    public void notifyPlayer(String player, String key, String... pairs) {
         if (game != null && player != null && !player.isEmpty()) {
-            game.notify(player, message);
+            game.notify(player, key, pairs);
         }
     }
 }
