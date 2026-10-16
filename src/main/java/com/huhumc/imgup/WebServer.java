@@ -3,6 +3,7 @@ package com.huhumc.imgup;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -17,6 +18,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -84,6 +87,17 @@ public final class WebServer {
 
     /** 工信部备案查询地址。备案号按国内惯例链到这里。 */
     private static final String ICP_LOOKUP_URL = "https://beian.miit.gov.cn/";
+
+    /**
+     * 看门狗线程池。只用来「到点关掉挂住的连接」，一个守护单线程就够，
+     * 而且每个请求只在超时点、2 倍超时点……各唤醒一次，开销可以忽略。
+     */
+    private static final ScheduledExecutorService WATCHDOG =
+            Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "ImgUp-Web-Watchdog");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     /** 每个 IP 的取码记录，用于限流。 */
     private final Map<String, List<Long>> codeHits = new LinkedHashMap<>();
@@ -191,6 +205,101 @@ public final class WebServer {
 
     // ------------------------------------------------------------ 入口
 
+    /**
+     * 读请求体，带「空闲超时」。
+     *
+     * 浏览器关掉页面时 TCP 会关闭，服务端阻塞在 read() 上的线程立刻抛 IOException，
+     * 资源马上回收 —— 这条路本来就是通的（实测过）。
+     *
+     * 真正会一直挂着的是「连接不断开、但也不再发数据」的情况：拔网线、笔记本休眠、
+     * 或者故意挂住的客户端。com.sun.net.httpserver **默认没有读超时**，那个请求会
+     * 一直占着一条连接和一块缓冲区，直到 TCP keepalive 两小时后才可能发现。
+     *
+     * 所以这里起个看门狗，空闲超过 web.request_timeout_seconds 就关掉这次 exchange，
+     * 把阻塞的线程踢出来。
+     *
+     * 注意用的是**空闲**超时而不是总时长 —— 传得慢但一直在传的上传不会被误杀，
+     * 只有真的没动静了才断。
+     */
+    private byte[] readBodyWithIdleTimeout(HttpExchange exchange, long declared, int limit)
+            throws IOException {
+        long timeoutMs = Math.max(1, config.requestTimeoutSeconds) * 1000L;
+        BodyActivity activity = new BodyActivity();
+        ScheduledFuture<?> watchdog = WATCHDOG.scheduleAtFixedRate(() -> {
+            if (!activity.isFinished() && activity.idleMillis() >= timeoutMs) {
+                log.fine("请求体空闲超过 " + config.requestTimeoutSeconds + " 秒，断开连接："
+                        + exchange.getRequestURI().getPath());
+                try {
+                    // 关掉 exchange 会让阻塞在 read() 上的线程抛出来
+                    exchange.close();
+                } catch (Exception ignored) {
+                    // 关的时候连接可能已经没了
+                }
+            }
+        }, timeoutMs, timeoutMs, TimeUnit.MILLISECONDS);
+        try (InputStream in = exchange.getRequestBody()) {
+            return Multipart.readBody(activity.wrap(in), declared, limit);
+        } finally {
+            activity.finish();
+            watchdog.cancel(false);
+        }
+    }
+
+    /** 记录请求体最后一次读到数据的时间，给看门狗判断是否空闲超时。 */
+    private static final class BodyActivity {
+        private final AtomicLong lastActivity = new AtomicLong(System.nanoTime());
+        private volatile boolean finished;
+
+        InputStream wrap(InputStream in) {
+            return new FilterInputStream(in) {
+                @Override
+                public int read() throws IOException {
+                    int value = super.read();
+                    lastActivity.set(System.nanoTime());
+                    return value;
+                }
+
+                @Override
+                public int read(byte[] buffer, int offset, int length) throws IOException {
+                    int count = super.read(buffer, offset, length);
+                    lastActivity.set(System.nanoTime());
+                    return count;
+                }
+            };
+        }
+
+        long idleMillis() {
+            return (System.nanoTime() - lastActivity.get()) / 1_000_000L;
+        }
+
+        void finish() {
+            finished = true;
+        }
+
+        boolean isFinished() {
+            return finished;
+        }
+    }
+
+    /**
+     * 判断这个 IOException 是不是「客户端已经不在了」。
+     *
+     * 这类异常在正常使用中很常见（玩家上传到一半关掉页面），不该当故障报。
+     * 真正需要警惕的是磁盘写失败之类的 IO 错误，那些会走到 WARNING。
+     */
+    private static boolean isClientGone(Throwable error) {
+        Throwable t = error;
+        for (int depth = 0; t != null && depth < 10; depth++, t = t.getCause()) {
+            if (t instanceof java.nio.channels.AsynchronousCloseException
+                    || t instanceof java.nio.channels.ClosedChannelException
+                    || t instanceof java.net.SocketException
+                    || t instanceof java.io.EOFException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void handle(HttpExchange exchange) {
         long started = System.nanoTime();
         int status = 500;
@@ -209,6 +318,19 @@ public final class WebServer {
         } catch (IllegalArgumentException e) {
             status = 400;
             safeJson(exchange, 400, error("bad_request", 400, "请求格式不对", null));
+        } catch (IOException e) {
+            if (isClientGone(e)) {
+                // 客户端提前没了：关掉页面、拔网线，或者我们自己的空闲超时把连接关了。
+                // 这时响应已经发不出去，记 FINE 就够了 —— 用 WARNING 会把「正常关页面」
+                // 刷成告警，把真正的问题淹掉。
+                status = 499; // nginx 的「客户端关闭连接」
+                log.fine("客户端提前断开：" + exchange.getRequestMethod() + " " + path);
+            } else {
+                log.log(Level.WARNING, "处理 " + exchange.getRequestMethod() + " " + path
+                        + " 时 IO 出错", e);
+                status = 500;
+                safeJson(exchange, 500, error("internal", 500, "服务器内部错误，请稍后重试", null));
+            }
         } catch (Throwable t) {
             log.log(Level.WARNING, "处理 " + exchange.getRequestMethod() + " " + path + " 时出错", t);
             status = 500;
@@ -452,8 +574,9 @@ public final class WebServer {
         }
 
         byte[] raw;
-        try (InputStream in = exchange.getRequestBody()) {
-            raw = Multipart.readBody(in, headerLong(exchange, "Content-Length", -1),
+        try {
+            raw = readBodyWithIdleTimeout(exchange,
+                    headerLong(exchange, "Content-Length", -1),
                     config.maxUploadBytes + 1024 * 1024);
         } catch (Multipart.TooLargeException e) {
             return sendJson(exchange, 413, error("too_large", 413,
@@ -1279,8 +1402,9 @@ public final class WebServer {
 
     private Map<String, Object> readJson(HttpExchange exchange) throws IOException {
         byte[] raw;
-        try (InputStream in = exchange.getRequestBody()) {
-            raw = Multipart.readBody(in, headerLong(exchange, "Content-Length", -1), 64 * 1024);
+        try {
+            raw = readBodyWithIdleTimeout(exchange,
+                    headerLong(exchange, "Content-Length", -1), 64 * 1024);
         } catch (Multipart.TooLargeException e) {
             throw new IllegalArgumentException("请求体太大");
         }

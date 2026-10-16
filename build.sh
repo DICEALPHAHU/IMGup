@@ -254,6 +254,38 @@ with zipfile.ZipFile(jar) as zf:
                  + "；".join(problems))
     print("    i18n.js 离线兜底字典与语言文件一致（" + str(len(zh_dict)) + " 键）")
 
+    # 死配置检查：config.yml 里写出来的每一项都必须真的被 Java 读过。
+    # 站长改了一个没人读的键会以为生效了，实际什么都没发生 ——
+    # web.request_timeout_seconds 就这么空转了不知道多久（解析了但从没用），
+    # 结果就是「挂住的请求永远不断开」。
+    with zf.open("config.yml") as fh:
+        cfg_text = fh.read().decode("utf-8")
+    stack, cfg_keys = [], []
+    for line in cfg_text.split("\n"):
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+        m = re.match(r"^(\s*)([a-z_][\w]*):(.*)$", line)
+        if not m:
+            continue
+        indent, key, rest = len(m.group(1)), m.group(2), m.group(3).strip()
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+        path = ".".join([k for _, k in stack] + [key])
+        if rest == "":
+            stack.append((indent, key))
+        else:
+            cfg_keys.append(path)
+
+    java_blob = ""
+    for src in glob.glob("src/main/java/**/*.java", recursive=True):
+        with open(src, encoding="utf-8") as fh:
+            java_blob += fh.read()
+    java_literals = set(re.findall(r'"([\w.]+)"', java_blob))
+    dead_cfg = sorted(k for k in cfg_keys if k not in java_literals)
+    if dead_cfg:
+        sys.exit("这些配置项写在 config.yml 里但 Java 从没读过（改了不会生效）：" + str(dead_cfg))
+    print("    config.yml 的 " + str(len(cfg_keys)) + " 个配置项都被读取了，没有死配置")
+
 
     # 版本号只能有一个来源（plugin.yml）。WebServer 里若写死版本号，
     # /api/health 报出来的就和插件实际版本对不上 —— 这种漂移直接拦掉。

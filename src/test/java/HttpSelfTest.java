@@ -73,7 +73,8 @@ public final class HttpSelfTest {
                 .set("web.site_name", "测试站名")
                 .set("web.admin_enabled", true)
                 .set("web.admin_password", "TESTPW123456")
-                .set("web.icp_license", "京ICP备12345678号-1");
+                .set("web.icp_license", "京ICP备12345678号-1")
+                .set("web.request_timeout_seconds", 5);
         WebConfig config = WebConfig.from(stub);
 
         sessions = new Sessions(3600_000L, config.codeTtlMillis);
@@ -142,6 +143,7 @@ public final class HttpSelfTest {
             testInjectedMessagesHaveNoRawPlaceholders();
             testFooterUsesInlineCode();
             testFooterPluginLine();
+            testStalledBodyIsDropped();
             testIcpLicenseLine();
             testMessageFileUpgradeMerge();
         } finally {
@@ -537,6 +539,50 @@ public final class HttpSelfTest {
         // 注入的那张表里也应该是同样的 HTML，前端覆盖时才不会丢样式
         check("注入表里也是同样的 HTML",
                 get("/").text().contains("<code>images.command.create</code>"));
+    }
+
+    // ------------------------------------------ 挂住的请求体
+
+    /**
+     * 连接不断开、但也不发数据的请求，必须被空闲超时踢掉。
+     *
+     * com.sun.net.httpserver 默认**没有读超时** —— 这种请求会一直占着一条连接，
+     * 直到 TCP keepalive 两小时后才可能被发现。用 /admin/api/login 是因为它
+     * 读请求体之前不查权限，最容易构造。
+     *
+     * 注意这里模拟的是「连着但不发」，跟「用户关掉页面」是两回事：
+     * 后者 TCP 会关，服务端立刻回收，本来就没问题。
+     */
+    private static void testStalledBodyIsDropped() throws Exception {
+        section("挂住的请求体会被空闲超时断开");
+
+        java.net.URI uri = java.net.URI.create(base);
+        long started = System.currentTimeMillis();
+        boolean dropped;
+        try (java.net.Socket socket = new java.net.Socket(uri.getHost(), uri.getPort())) {
+            socket.setSoTimeout(30_000);
+            java.io.OutputStream out = socket.getOutputStream();
+            out.write(("POST /admin/api/login HTTP/1.1\r\n"
+                    + "Host: " + uri.getHost() + "\r\n"
+                    + "Content-Type: application/json\r\n"
+                    + "Content-Length: 60000\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            out.flush();
+            // 声明了 60000 字节，但一个字节都不发。服务端应该在空闲超时后关掉连接。
+            dropped = socket.getInputStream().read() == -1;
+        } catch (java.io.IOException e) {
+            // 被关掉时抛 IOException（连接重置）也算断开
+            dropped = true;
+        }
+        long elapsed = System.currentTimeMillis() - started;
+
+        check("挂住的连接被服务端断开了", dropped, "服务端没有断开，连接一直挂着");
+        check("断开发生在空闲超时附近（" + elapsed + "ms）", elapsed < 25_000,
+                "断得太晚：" + elapsed + "ms");
+        check("确实等了一会儿而不是秒断（" + elapsed + "ms）", elapsed >= 2_000,
+                "断得太早，可能误杀了正常请求");
+
+        // 断掉之后服务器还得好好活着
+        check("断开后服务器仍正常", get("/api/health").status == 200);
     }
 
     // ------------------------------------------ 页脚的插件信息行
