@@ -9,13 +9,13 @@
 
 # ---------------------------------------------------------------- 这个语言自己的名字 --
 # meta.name 会显示在网页右上角的语言开关上（写这门语言自己的叫法）。
-meta.name: "中文"
+meta.name: "中文（简体）"
 meta.code: "zh"
 
 # ------------------------------------------------------------ 网站元素（页面上显示给玩家的文字） --
 site.title: "CustomImages"
 site.brand: "CustomImages"
-site.home_heading: "上传海报"
+site.home_heading: "上传图片"
 site.home_lede: "先在网页上获取一个 8 位上传码，再进游戏输入 /imgup 你的上传码 完成确认，就可以上传图片了。"
 site.home_first_step_title: "第一步 · 获取上传码"
 site.home_button: "获取上传码"
@@ -58,7 +58,7 @@ common.uploadAnother: "⬆️ 再传一张"
 common.footerTagline: "图片上传站 · 深色 Minecraft 风格 · 纯静态页面，不加载任何外部资源。"
 common.footerPermBefore: "游戏内贴海报需要 "
 common.footerPermAfter: "$site_footer_permission_suffix"
-common.langSwitchTitle: "切换到英文"
+common.langSwitchTitle: "切换语言"
 common.copy: "📋 复制"
 common.copied: "✅ 已复制"
 common.copyManual: "⚠️ 请长按手动复制"
@@ -68,7 +68,7 @@ common.sessionExpired: "会话已失效，请重新获取上传码。"
 
 # ------------------------------------------------------------ 首页 · 获取上传码 --
 index.title: "获取上传码 · 图片上传站"
-index.heading: "上传海报"
+index.heading: "上传图片"
 index.lede: "先在网页上获取一个 8 位上传码，再进游戏输入 "
 index.ledeSuffix: " 完成确认，就可以上传图片了。"
 index.step1Title: "第一步 · 获取上传码"

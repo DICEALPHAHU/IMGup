@@ -51,7 +51,7 @@
 
       /* ---- 首页：获取上传码 ---- */
       'index.title': '获取上传码 · 图片上传站',
-      'index.heading': '上传海报',
+      'index.heading': '上传图片',
       'index.lede': '先在网页上获取一个 8 位上传码，再进游戏输入 ',
       'index.ledeSuffix': ' 完成确认，就可以上传图片了。',
       'index.step1Title': '第一步 · 获取上传码',
@@ -259,7 +259,7 @@
 
       /* ---- Home: get an upload code ---- */
       'index.title': 'Get upload code · Image Upload',
-      'index.heading': 'Upload a poster',
+      'index.heading': 'Upload an image',
       'index.lede': 'Get an 8-character upload code here, then type ',
       'index.ledeSuffix': ' in game to confirm. After that you can upload images.',
       'index.step1Title': 'Step 1 · Get an upload code',
@@ -592,94 +592,139 @@
   }
 
   /* ------------------------------------------------------- 语言开关 -- */
+  //
+  // 右上角一个地球图标，点开是下拉菜单：
+  //   🌐  [ 中文（简体） ✓ ]
+  //       [ English        ]
+  //
+  // 每个选项的文字来自该语言文件里的 meta.name —— 也就是「这门语言自己的叫法」，
+  // 所以中文选项写「中文（简体）」、英文选项写「English」，不随界面语言变。
+  // 加语言只需往 messages/ 里放一份新的 yml 并填好 meta.name，菜单自动多一项。
 
-  /** 服务端有哪些语言文件（messages/*.yml），语言开关据此列出选项。 */
+  /** 服务端有哪些语言：[{code, name}] */
   var AVAILABLE = [];
-  var DEFAULT_LANG = (typeof window.IMGUP_LANG === 'string' && window.IMGUP_LANG) || FALLBACK;
+  /** 当前界面语言（服务端渲染时注入的 IMGUP_LANG） */
+  var CURRENT = (typeof window.IMGUP_LANG === 'string' && window.IMGUP_LANG) || FALLBACK;
+  /** 兜底：拿不到 /api/languages 时至少显示这两门 */
+  var FALLBACK_NAMES = { zh: '中文（简体）', en: 'English' };
 
   function buildSwitcher() {
+    // 放在导航最后 —— 页面是 RTL 友好布局时 .topnav 靠右，所以它在右上角
     var nav = document.querySelector('.topnav');
     if (!nav || nav.querySelector('.lang-switch')) { return; }
 
+    var box = document.createElement('div');
+    box.className = 'lang-switch';
+
     var btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'lang-switch';
-    btn.setAttribute('data-i18n-attr', 'title:common.langSwitchTitle');
-    var label = document.createElement('span');
-    // 按钮上写「切到哪门语言」，名字来自目标语言的 meta.name
-    label.textContent = LANGUAGE_NAMES[FALLBACK] || FALLBACK.toUpperCase();
-    btn.appendChild(label);
-    btn.addEventListener('click', function () {
-      cycleLanguage(btn);
-    });
-    // 放在导航最左边：切语言是个「全局开关」，不该挤在末尾
-    nav.insertBefore(btn, nav.firstChild);
+    btn.className = 'lang-btn';
+    btn.setAttribute('aria-haspopup', 'true');
+    btn.setAttribute('aria-expanded', 'false');
+    btn.setAttribute('data-i18n-attr', 'title:common.langSwitchTitle,aria-label:common.langSwitchTitle');
 
-    // 问服务端有哪些语言可用（一个语言文件就是一个选项）
+    var icon = document.createElement('span');
+    icon.className = 'lang-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = '🌐';
+    btn.appendChild(icon);
+
+    var caret = document.createElement('span');
+    caret.className = 'lang-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    caret.textContent = '▾';
+    btn.appendChild(caret);
+
+    var menu = document.createElement('div');
+    menu.className = 'lang-menu';
+    menu.setAttribute('role', 'menu');
+    menu.hidden = true;
+
+    btn.addEventListener('click', function (event) {
+      event.stopPropagation();
+      if (menu.hidden) { openMenu(menu, btn); } else { closeMenu(menu, btn); }
+    });
+
+    // 点别处 / 按 Esc 关掉
+    document.addEventListener('click', function () { closeMenu(menu, btn); });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') { closeMenu(menu, btn); }
+    });
+    menu.addEventListener('click', function (event) { event.stopPropagation(); });
+
+    box.appendChild(btn);
+    box.appendChild(menu);
+    nav.appendChild(box);
+
+    // 先按兜底渲染一遍，接口回来后再用真实列表重画
+    renderMenu(menu, btn);
     fetch('/api/languages', { headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (data && data.ok && data.available && data.available.length) {
-          AVAILABLE = data.available;
-          DEFAULT_LANG = data.default || DEFAULT_LANG;
-          updateSwitchLabel(label);
-        }
+        if (!data || !data.ok || !data.languages || !data.languages.length) { return; }
+        AVAILABLE = data.languages;
+        if (typeof data.current === 'string' && data.current) { CURRENT = data.current; }
+        renderMenu(menu, btn);
       })
-      .catch(function () { /* 拿不到就退化成默认的两门语言 */ });
+      .catch(function () { /* 拿不到就用兜底列表，菜单仍然是可用的 */ });
   }
 
-  /** 按钮上写「切到哪门语言」：中文界面显示 English，英文界面显示 中文。 */
-  function updateSwitchLabel(label) {
-    var others = AVAILABLE.filter(function (code) { return code !== lang; });
-    if (!others.length) { return; }
-    var next = others[0];
-    label.textContent = languageName(next);
+  /** 可用语言列表：优先用接口给的，拿不到就把兜底的两门拼出来。 */
+  function languageList() {
+    if (AVAILABLE.length) { return AVAILABLE; }
+    return Object.keys(FALLBACK_NAMES).map(function (code) {
+      return { code: code, name: FALLBACK_NAMES[code] };
+    });
+  }
+
+  function renderMenu(menu, btn) {
+    menu.innerHTML = '';
+    languageList().forEach(function (item) {
+      var entry = document.createElement('button');
+      entry.type = 'button';
+      entry.className = 'lang-item';
+      entry.setAttribute('role', 'menuitem');
+      var isCurrent = item.code === CURRENT;
+      if (isCurrent) { entry.classList.add('is-current'); }
+      entry.setAttribute('lang', item.code);
+
+      var text = document.createElement('span');
+      // 注意：这里写的是「这门语言自己的叫法」，不是当前界面语言的翻译，
+      // 所以不能挂 data-i18n —— 那会被翻译引擎按当前语言改写掉。
+      text.textContent = item.name || item.code.toUpperCase();
+      entry.appendChild(text);
+
+      var tick = document.createElement('span');
+      tick.className = 'lang-tick';
+      tick.setAttribute('aria-hidden', 'true');
+      tick.textContent = isCurrent ? '✓' : '';
+      entry.appendChild(tick);
+
+      entry.addEventListener('click', function () {
+        closeMenu(menu, btn);
+        if (!isCurrent) { switchTo(item.code); }
+      });
+      menu.appendChild(entry);
+    });
+  }
+
+  function openMenu(menu, btn) {
+    menu.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeMenu(menu, btn) {
+    if (menu.hidden) { return; }
+    menu.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
   }
 
   /**
-   * 语言开关上显示的名字，来自各语言文件里的 meta.name（写这门语言自己的叫法）。
-   * 加语言时不用改这里 —— 复制一份 yml 填好 meta.name 就会出现。
+   * 切语言：先让服务端记住（写 cookie），再带 ?lang= 刷新页面。
+   *
+   * 之所以刷新而不是前端换文案：服务端会用新语言把整页重新渲染一遍，
+   * 首屏就是对的，不会出现「先看到中文再跳成英文」的闪烁。
    */
-  var LANGUAGE_NAMES = { zh: '中文', en: 'English' };
-
-  function languageName(code) {
-    if (LANGUAGE_NAMES[code]) { return LANGUAGE_NAMES[code]; }
-    // 当前语言表里没有别的语言的 meta.name，就退回语言代码
-    return code.toUpperCase();
-  }
-
-  /** 用当前语言文件里的 meta.name 补齐已知语言名（至少能显示自己）。 */
-  function rememberOwnName() {
-    var name = DICT[lang] && DICT[lang]['meta.name'];
-    if (typeof name === 'string' && name) {
-      LANGUAGE_NAMES[lang] = name;
-    }
-  }
-
-  /**
-   * 切到下一门语言：先让服务端记住（Set-Cookie），再带 ?lang= 刷新页面，
-   * 这样服务端会用新语言把整页重新渲染一遍 —— 首屏就是对的，不会闪。
-   */
-  function cycleLanguage(btn) {
-    var others = AVAILABLE.filter(function (code) { return code !== lang; });
-    if (!others.length) {
-      // 没拿到语言列表（接口失败）时退化成两门语言互切
-      setLang(lang === 'zh' ? 'en' : 'zh');
-      return;
-    }
-    if (others.length > 1) {
-      // 超过两门语言时让玩家选，避免「点好几下才轮到想要的」
-      var picked = window.prompt(others.map(function (c, i) {
-        return (i + 1) + '. ' + languageName(c);
-      }).join('\n'), '1');
-      var index = parseInt(picked, 10);
-      if (!index || index < 1 || index > others.length) { return; }
-      switchTo(others[index - 1]);
-      return;
-    }
-    switchTo(others[0]);
-  }
-
   function switchTo(code) {
     fetch('/api/lang?lang=' + encodeURIComponent(code), { method: 'POST' })
       .catch(function () { /* 记不住也没关系，下面的 ?lang= 仍然生效 */ })
@@ -738,7 +783,6 @@
   // 直接调用会匹配到 0 个元素、.topnav 也是 null，等于初始化根本没跑。
   // 所以挂到 DOMContentLoaded；如果文档已经就绪（defer / 动态插入的情况）就直接跑。
   function boot() {
-    rememberOwnName();
     buildSwitcher();
     applyStatic();
     applyMeta();

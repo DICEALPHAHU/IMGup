@@ -608,30 +608,90 @@ main.wrap { padding-bottom: 36px; }
 }
 
 /* ---------------------------------------------------------- 语言开关 -- */
-/* 由 i18n.js 动态插入到 .topnav 最前面；样式做成「次要按钮」，不抢站长入口 */
-.topnav {
+/* 由 i18n.js 动态插到 .topnav 末尾，所以显示在网页右上角。
+   按钮是个地球图标，点开是下拉菜单；菜单项写的是「这门语言自己的叫法」
+   （中文（简体）/ English），当前语言带一个 ✓。 */
+
+.lang-switch {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
 }
-.lang-switch {
+
+.lang-btn {
   font: inherit;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: #b9b9c6;
   background: #202028;
   border: 2px solid #3a3a48;
-  padding: 6px 10px;
+  padding: 6px 9px;
   cursor: pointer;
 }
-.lang-switch:hover,
-.lang-switch:focus-visible {
+.lang-btn:hover,
+.lang-btn:focus-visible {
   color: #e8e8ef;
   border-color: #6cc04a;
   outline: none;
 }
-.lang-switch:active {
-  transform: translateY(1px);
+.lang-btn[aria-expanded="true"] {
+  border-color: #6cc04a;
+  color: #e8e8ef;
+}
+.lang-icon { font-size: 16px; }
+.lang-caret { font-size: 10px; opacity: 0.75; }
+
+.lang-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 170px;
+  background: #202028;
+  border: 2px solid #3a3a48;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lang-item {
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  color: #cfcfda;
+  background: transparent;
+  border: 0;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.lang-item:hover,
+.lang-item:focus-visible {
+  background: #2b2b36;
+  color: #ffffff;
+  outline: none;
+}
+.lang-item.is-current {
+  color: #8ad36a;
+}
+.lang-tick {
+  font-size: 13px;
+  min-width: 12px;
+  text-align: right;
+}
+
+/* 窄屏上别让菜单把顶栏挤坏 */
+@media (max-width: 420px) {
+  .lang-menu { right: -6px; min-width: 150px; }
 }
 
 /* ---------------------------------------------------------- 网页后台 -- */

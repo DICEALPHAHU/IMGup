@@ -95,12 +95,12 @@ public final class HttpSelfTest {
 
             @Override
             public String serverMotd() {
-                return "ALPHAHU Minecraft JAVA 26.1 Server";
+                return "Example MOTD";
             }
 
             @Override
             public String serverName() {
-                return "alphahu Server";
+                return "Example Server";
             }
         });
         if (!server.start()) {
@@ -381,6 +381,13 @@ public final class HttpSelfTest {
                 && String.valueOf(body.get("available")).contains("en"),
                 "拿到 " + body.get("available"));
 
+        check("每项带该语言的自称",
+                String.valueOf(body.get("languages")).contains("中文（简体）")
+                        && String.valueOf(body.get("languages")).contains("English"),
+                "拿到 " + body.get("languages"));
+        check("current 是当前语言", "zh".equals(body.get("current")),
+                "拿到 " + body.get("current"));
+
         Reply bad = get("/api/lang?lang=../../etc");
         check("非法语言代码被拒绝", bad.status == 400, "拿到 " + bad.status);
 
@@ -391,6 +398,10 @@ public final class HttpSelfTest {
                 "cookie=" + client.cookie("imgup_lang"));
         Reply home = client.get("/");
         check("之后访问自动用英文", home.text().contains("Image Upload"));
+        Reply enLangs = client.get("/api/languages");
+        check("英文会话下 current=en",
+                "en".equals(Json.parseObject(enLangs.text()).get("current")),
+                "拿到 " + Json.parseObject(enLangs.text()).get("current"));
     }
 
     // ------------------------------------------------------------ 后台

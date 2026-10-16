@@ -315,11 +315,26 @@ public final class WebServer {
                 List.of(cookie(COOKIE_LANG, normalized, 365 * 24 * 3600)));
     }
 
-    /** 语言开关的选项：给前端列出所有可用的语言文件。 */
+    /**
+     * 语言开关的选项：列出所有可用的语言文件。
+     *
+     * 每项都带该语言的自称（meta.name），所以菜单上显示的是
+     * 「中文（简体）」「English」这种，而不是裸的语言代码。
+     */
     private int apiLanguages(HttpExchange exchange) throws IOException {
+        List<Object> options = new ArrayList<>();
+        for (String code : messages.languages()) {
+            Map<String, Object> option = new LinkedHashMap<>();
+            option.put("code", code);
+            option.put("name", messages.name(code));
+            options.add(option);
+        }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("ok", true);
+        body.put("current", resolveLang(exchange));
         body.put("default", messages.defaultLang());
+        body.put("languages", options);
+        // 兼容旧字段，避免外部脚本按老格式解析时炸掉
         body.put("available", messages.languages());
         return sendJson(exchange, 200, body);
     }

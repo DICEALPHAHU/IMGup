@@ -176,10 +176,24 @@ with zipfile.ZipFile(jar) as zf:
         used_site |= {"site." + v for v in re.findall(r"\$msg_site_([A-Za-z0-9_]+)", html)}
         used_site |= set(re.findall(r'data-i18n="(site\.[A-Za-z0-9_]+)"', html))
         used_site |= set(re.findall(r"t\('(site\.[A-Za-z0-9_]+)'", html))
+        # data-i18n-attr="title:site.xxx,aria-label:site.yyy" —— 属性上的翻译
+        for spec in re.findall(r'data-i18n-attr="([^"]+)"', html):
+            for pair in spec.split(','):
+                if ':' in pair:
+                    key = pair.split(':', 1)[1].strip()
+                    if key.startswith('site.'):
+                        used_site.add(key)
     with zf.open("web/i18n.js") as fh:
         i18n_js = fh.read().decode("utf-8")
     used_site |= set(re.findall(r"'(site\.[A-Za-z0-9_]+)':", i18n_js))
     used_site |= set(re.findall(r"t\('(site\.[A-Za-z0-9_]+)'", i18n_js))
+    # JS 里动态设的属性翻译：setAttribute('data-i18n-attr', 'title:site.xxx')
+    for spec in re.findall(r"setAttribute\('data-i18n-attr',\s*'([^']+)'", i18n_js):
+        for pair in spec.split(','):
+            if ':' in pair:
+                key = pair.split(':', 1)[1].strip()
+                if key.startswith('site.'):
+                    used_site.add(key)
     declared_site = {k for k in tables["zh"] if k.startswith("site.")}
     dead = sorted(declared_site - used_site)
     if dead:

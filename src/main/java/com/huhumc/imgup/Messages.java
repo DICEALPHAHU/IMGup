@@ -163,6 +163,17 @@ public final class Messages {
         load(Logger.getLogger("imgup-test"));
     }
 
+    /**
+     * 某门语言的显示名 —— 取自该语言文件里的 meta.name，写的是这门语言自己的叫法
+     * （简体中文对应「中文（简体）」，英文对应「English」）。
+     */
+    public String name(String lang) {
+        String value = lookup(lang, "meta.name");
+        return value == null || value.isBlank()
+                ? (lang == null ? "" : lang.toUpperCase(java.util.Locale.ROOT))
+                : value;
+    }
+
     /** 有哪些语言可用，用于网页上的语言开关。 */
     public List<String> languages() {
         return new ArrayList<>(tables.keySet());

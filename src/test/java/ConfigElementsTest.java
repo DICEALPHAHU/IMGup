@@ -118,6 +118,7 @@ public final class ConfigElementsTest {
                     "site.title", "site.brand", "site.nav_reverify",
                     "site.upload_heading", "site.upload_lede", "site.upload_button",
                     "site.upload_nickname_title", "site.upload_footer"));
+            checkHeadings(base);
             checkFooterServerInfo(base);
             checkAdminPage(base);
             checkPage(base + "/result", "结果页", List.of(
@@ -132,6 +133,22 @@ public final class ConfigElementsTest {
         System.out.println("渲染出来的元素：" + ok + " 个，缺失：" + bad + " 个");
         if (bad > 0) {
             System.exit(1);
+        }
+    }
+
+    /** 首页主标题必须是「上传图片」。 */
+    private static void checkHeadings(String base) throws Exception {
+        System.out.println("\n=== 页面主标题 ===");
+        String home = fetch(base + "/").replaceAll("(?s)<script>window\\.IMGUP_.*?</script>", "");
+        boolean uploadImage = home.contains("上传图片");
+        boolean poster = home.contains("上传海报");
+        if (uploadImage && !poster) {
+            ok++;
+            System.out.println("  [OK]   首页主标题是「上传图片」");
+        } else {
+            bad++;
+            System.out.println("  [!!]   首页主标题不对（上传图片=" + uploadImage
+                    + "，还残留「上传海报」=" + poster + "）");
         }
     }
 
