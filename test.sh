@@ -20,9 +20,12 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "缺少 $1" >&2; exit 1; }; }
 need javac
 need java
 
+# 首次运行（或者换了 IMGUP_BUILD_CACHE）时缓存还没有，直接自己引导一次。
+# 以前这里是「报错让人先跑 build.sh」—— 结果 CI 里全新检出必然失败：
+# Release 工作流的「跑测试」那一步就是这么挂掉的。
 if [ ! -f "$CACHE_ROOT/classpath.txt" ]; then
-  echo "还没有依赖缓存，先跑一次 build.sh" >&2
-  exit 1
+  echo "==> 还没有依赖缓存，先跑一次 build.sh 准备（首次需要联网下载）"
+  bash "$HERE/build.sh"
 fi
 
 CP=""
