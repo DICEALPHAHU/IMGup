@@ -144,6 +144,9 @@ public final class WebConfig {
     /** 同时进行的上传上限，0 表示不限制。 */
     public final int maxConcurrentUploads;
 
+    /** 每 IP 每小时允许的后台登录**失败**次数。 */
+    public final int loginPerIpHour;
+
     private WebConfig(Source cfg) {
         this.enabled = cfg.getBoolean("web.enabled", true);
         this.host = cfg.getString("web.host", "0.0.0.0");
@@ -154,7 +157,7 @@ public final class WebConfig {
         this.maxUploadBytes = clamp(cfg.getInt("upload.max_upload_bytes", 5 * 1024 * 1024),
                 64 * 1024, 64 * 1024 * 1024);
         this.maxDimension = clamp(cfg.getInt("upload.max_dimension", 2048), 16, 16384);
-        this.maxPixels = clamp(cfg.getInt("upload.max_pixels", 40_000_000),
+        this.maxPixels = clamp(cfg.getInt("upload.max_pixels", 16_000_000),
                 10_000, 400_000_000);
         this.jpegQuality = clamp(cfg.getInt("upload.jpeg_quality", 90), 30, 100);
         this.maxNameLength = clamp(cfg.getInt("upload.max_name_length", 64), 16, 180);
@@ -179,6 +182,7 @@ public final class WebConfig {
         // 不是「某个服务器的值当默认」（CustomImagesUp 是插件自带的品牌名）
         this.siteName = cfg.getString("web.site_name", "CustomImagesUp").trim();
         this.maxConcurrentUploads = Math.max(0, cfg.getInt("limits.max_concurrent_uploads", 8));
+        this.loginPerIpHour = clamp(cfg.getInt("limits.login_per_ip_per_hour", 10), 1, 1000);
     }
 
     /** 从 Bukkit 配置构造（插件里用这个）。 */

@@ -1,10 +1,17 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="$lang">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>$msg_result_title · $site_name$msg_site_title_suffix</title>
+<meta name="description" content="$msg_site_og_description">
+<meta property="og:title" content="$msg_result_title · $site_name$msg_site_title_suffix">
+<meta property="og:description" content="$msg_site_og_description">
+<meta property="og:type" content="website">
+<!-- theme-color 让手机浏览器的地址栏跟着站点的深色底走 -->
+<meta name="theme-color" content="#131317">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/i18n.js"></script>
 </head>
@@ -43,7 +50,7 @@
     <h2 class="panel-title">$msg_result_fileNameTitle</h2>
     <div class="copy-row">
       <code class="name-box" id="nameBox">$name</code>
-      <button class="btn" type="button" data-copy="nameBox" data-label="📋 复制文件名">$msg_result_copyName</button>
+      <button class="btn" type="button" data-copy="nameBox">$msg_result_copyName</button>
     </div>
     <p class="panel-note">$msg_result_fileNameNote</p>
 
@@ -68,7 +75,7 @@
     <h2 class="panel-title">$msg_result_useInGame</h2>
     <div class="copy-row">
       <code class="cmd-box" id="cmdBox">/image create $name</code>
-      <button class="btn btn-primary" type="button" data-copy="cmdBox" data-label="📋 复制指令">$msg_result_copyCommand</button>
+      <button class="btn btn-primary" type="button" data-copy="cmdBox">$msg_result_copyCommand</button>
     </div>
     <ol class="steps">
       <li>$msg_result_step1</li>
@@ -156,24 +163,26 @@
     return '';
   }
 
-  /* 还原按钮原文时走 data-i18n 键，切语言后不会串语言。 */
-  function flash(btn, text) {
-    var key = btn.getAttribute('data-i18n');
-    var fallback = btn.getAttribute('data-label') || t('common.copy');
+  /* 闪一下「已复制」，然后把按钮原文还回去。
+     原文是服务端按当前语言渲染好的，所以在绑定的时候存一份就行 ——
+     不再需要一个硬编码的 data-label 兜底（那个以前会让英文界面的按钮在闪完
+     之后跳回中文）。 */
+  function flash(btn, text, original) {
     btn.textContent = text;
     btn.disabled = true;
     window.setTimeout(function () {
-      btn.textContent = key ? t(key) : fallback;
+      btn.textContent = original;
       btn.disabled = false;
     }, 1500);
   }
 
   Array.prototype.forEach.call(document.querySelectorAll('[data-copy]'), function (btn) {
+    var original = btn.textContent;   // 服务端已经按当前语言渲染好了
     btn.addEventListener('click', function () {
       var target = document.getElementById(btn.getAttribute('data-copy'));
       if (!target) return;
       copyText(target.textContent.trim()).then(function (ok) {
-        flash(btn, ok ? t('common.copied') : t('common.copyManual'));
+        flash(btn, ok ? t('common.copied') : t('common.copyManual'), original);
       });
     });
   });
@@ -236,8 +245,8 @@
 
   function updateRenamePreview() {
     if (!renamePreview) return;
-    var nick = sanitizeNickname(renameInput.value, RENAME_MAX) || '原文件名';
-    renamePreview.textContent = (playerName || '玩家') + '-' + nick + '.' + currentExt();
+    var nick = sanitizeNickname(renameInput.value, RENAME_MAX) || t('common.originalFileName');
+    renamePreview.textContent = (playerName || t('common.unknownPlayer')) + '-' + nick + '.' + currentExt();
   }
 
   if (renameBox) {

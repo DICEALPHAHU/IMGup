@@ -1,10 +1,17 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="$lang">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>$msg_admin_title · $site_name$msg_site_title_suffix</title>
+<meta name="description" content="$msg_site_og_description">
+<meta property="og:title" content="$msg_admin_title · $site_name$msg_site_title_suffix">
+<meta property="og:description" content="$msg_site_og_description">
+<meta property="og:type" content="website">
+<!-- theme-color 让手机浏览器的地址栏跟着站点的深色底走 -->
+<meta name="theme-color" content="#131317">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/i18n.js"></script>
 </head>
@@ -66,7 +73,7 @@
     </div>
 
     <div class="alert alert-error hidden" id="listMsg" role="alert"></div>
-    <p class="loading" id="listLoading">加载中…</p>
+    <p class="loading" id="listLoading">$msg_site_admin_loading</p>
 
     <div class="adm-grid" id="grid"></div>
 

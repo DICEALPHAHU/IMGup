@@ -149,9 +149,22 @@ upload:
   max_dimension: 2048
 
   # 总像素上限，防止「解压炸弹」（小文件解出几亿像素把内存撑爆）。
+  #
+  # ★ 这一项直接决定内存峰值，换算关系是：
+  #     峰值内存 ≈ max_pixels × 4 字节 × limits.max_concurrent_uploads
+  #   默认 16000000（约 4096x4096）-> 单张解码约 64MB，8 并发约 0.5GB。
+  #   以前默认是 40000000，实测一张 123KB 的纯色 PNG（远低于 5MB 体积上限）
+  #   就能让堆增长 127MB，8 并发到 1.2GB —— 小内存的服务端会撑不住。
+  #   贴海报用不到那么多像素，真要放宽请同时调小 max_concurrent_uploads。
+  #
   # Maximum total pixels, to stop decompression bombs (a tiny file that expands
   # to hundreds of millions of pixels and exhausts memory).
-  max_pixels: 40000000
+  #
+  # ★ This directly sets peak memory:
+  #     peak ≈ max_pixels x 4 bytes x limits.max_concurrent_uploads
+  #   The default 16000000 (~4096x4096) means ~64MB per decode, ~0.5GB at 8
+  #   concurrent uploads. If you raise it, lower max_concurrent_uploads too.
+  max_pixels: 16000000
 
   # JPEG 重新编码的质量（1-100）。90 肉眼几乎无损，文件也不大。
   # JPEG re-encode quality (1-100). 90 looks lossless and keeps files small.
@@ -194,6 +207,12 @@ limits:
   # max_upload_bytes + 1MB; further requests get a "too many uploads" reply.
   # 0 = unlimited.
   max_concurrent_uploads: 8
+
+  # 每个 IP 每小时允许的后台登录**失败**次数。只统计失败，正常的登录登出不受影响。
+  # 密码本来是随机生成的，但如果你手动改成了弱密码，这一项就是兜底。
+  # Failed admin-login attempts allowed per IP per hour. Only failures are counted,
+  # so normal logins are never blocked.
+  login_per_ip_per_hour: 10
 
 # 是否要求 imgup.use 权限才能用 /imgup 确认上传码。
 # false = 所有人可用；true = 需要在 LuckPerms 里发 imgup.use。

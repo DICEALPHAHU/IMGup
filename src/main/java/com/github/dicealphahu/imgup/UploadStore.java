@@ -197,9 +197,26 @@ public final class UploadStore {
         }
     }
 
-    /** 索引里没有、但 pending 目录里存在的文件（比如上次写到一半崩了）补登记。 */
+    /**
+     * 索引里没有、但磁盘上存在的文件补登记（比如上次写到一半崩了，或者索引丢了）。
+     *
+     * pending 和 rejected 都要扫：只扫 pending 的话，索引一旦丢失，被拒绝的图片就
+     * 变成谁也看不见、谁也删不掉的孤儿文件，永远占着磁盘。
+     */
     private void recoverOrphans() {
-        try (Stream<Path> stream = Files.list(pendingDir)) {
+        int pendingCount = recoverFrom(pendingDir, STATUS_PENDING);
+        int rejectedCount = recoverFrom(rejectedDir, STATUS_REJECTED);
+        if (pendingCount + rejectedCount > 0) {
+            try {
+                save();
+            } catch (RuntimeException e) {
+                // 补登记失败不影响启动，索引下次还能再补
+            }
+        }
+    }
+
+    private int recoverFrom(Path dir, String status) {
+        try (Stream<Path> stream = Files.list(dir)) {
             List<Path> orphans = stream
                     .filter(Files::isRegularFile)
                     .filter(p -> !index.containsKey(p.getFileName().toString()))
@@ -213,7 +230,7 @@ public final class UploadStore {
                 item.name = name;
                 item.player = "";
                 item.nickname = name;
-                item.status = STATUS_PENDING;
+                item.status = status;
                 item.createdAt = System.currentTimeMillis();
                 try {
                     item.bytes = Files.size(path);
@@ -222,11 +239,10 @@ public final class UploadStore {
                 }
                 index.put(name, item);
             }
-            if (!orphans.isEmpty()) {
-                save();
-            }
+            return orphans.size();
         } catch (IOException ignored) {
             // 列不出来就算了，不影响正常上传
+            return 0;
         }
     }
 
@@ -437,8 +453,13 @@ public final class UploadStore {
             save();
             reserved.remove(name);
             return item.copy();
-        } catch (IOException e) {
-            // 落盘失败就把占位放掉，别让这个名字永远不可用
+        } catch (IOException | RuntimeException e) {
+            // 落盘失败就把占位放掉，别让这个名字永远不可用。
+            //
+            // 注意这里必须连 RuntimeException 一起接住：save() 写索引失败时抛的是
+            // IllegalStateException（它把 IOException 包了一层），只 catch IOException
+            // 的话占位和残留文件都不会被清理 —— 磁盘一满，每失败一次就永久烧掉一个
+            // 文件名变体（图.jpg、图-2.jpg、图-3.jpg……），待审目录里还堆着残file。
             reserved.remove(name);
             try {
                 Files.deleteIfExists(pendingDir.resolve(name));

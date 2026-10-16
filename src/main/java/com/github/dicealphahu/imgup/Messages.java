@@ -36,7 +36,18 @@ import java.util.stream.Stream;
 public final class Messages {
 
     /** 语言代码 -> (键 -> 文案)。 */
-    private final Map<String, Map<String, String>> tables = new LinkedHashMap<>();
+    /**
+     * 各语言的文案表。**写时复制**：load() 先在旁边建好一整份，最后一次性换指针。
+     *
+     * 为什么不能就地 clear()/put()：/imgup reload 是在服务端主线程调的，而读它的是
+     * HTTP 线程。LinkedHashMap 不是线程安全的，并发读写轻则读到空表（页面文案
+     * 短暂空白），重则走进被破坏的桶链。换成 volatile 换指针之后，读到的要么是
+     * 旧的完整表、要么是新的完整表，不存在中间状态。
+     *
+     * 顺带一个好处：load() 中途失败（比如目录读不到）时直接返回，旧表原封不动，
+     * 而不是先清空再失败、把能用的翻译也弄没了。
+     */
+    private volatile Map<String, Map<String, String>> tables = Map.of();
 
     /** config.yml 里指定的默认语言。 */
     private final String defaultLang;
@@ -175,7 +186,8 @@ public final class Messages {
         if (dirOverride != null) {
             this.dir = dirOverride;
         }
-        tables.clear();
+        // 先在旁边建好，最后再换上去 —— 中途任何一步失败都保留原来的表
+        Map<String, Map<String, String>> built = new LinkedHashMap<>();
         try {
             Files.createDirectories(dir);
         } catch (IOException e) {
@@ -214,18 +226,20 @@ public final class Messages {
                 log.warning("语言文件 " + fileName + " 里没有任何文案，已跳过");
                 continue;
             }
-            tables.put(lang, table);
+            built.put(lang, table);
         }
 
-        if (tables.isEmpty()) {
+        if (built.isEmpty()) {
             log.severe("messages/ 下一个可用的语言文件都没有！页面会显示键名而不是文案。");
             return 0;
         }
-        if (!tables.containsKey(defaultLang)) {
-            String fallback = tables.keySet().iterator().next();
+        if (!built.containsKey(defaultLang)) {
+            String fallback = built.keySet().iterator().next();
             log.warning("config.yml 里的 language: " + defaultLang + " 找不到对应的语言文件，"
-                    + "改用 " + fallback + "（现有：" + String.join(", ", tables.keySet()) + "）");
+                    + "改用 " + fallback + "（现有：" + String.join(", ", built.keySet()) + "）");
         }
+        // 到这里才换指针：HTTP 线程要么看到旧的完整表，要么看到新的完整表
+        tables = built;
         log.info("已加载 " + tables.size() + " 个语言：" + String.join(", ", tables.keySet())
                 + "（默认 " + defaultLang + "）");
         return tables.size();

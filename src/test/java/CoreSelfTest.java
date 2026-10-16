@@ -1,4 +1,5 @@
 import com.github.dicealphahu.imgup.ImageTools;
+import com.github.dicealphahu.imgup.Messages;
 import com.github.dicealphahu.imgup.ServerProperties;
 import com.github.dicealphahu.imgup.Json;
 import com.github.dicealphahu.imgup.Multipart;
@@ -10,6 +11,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.imageio.ImageIO;
 import java.awt.Color;
@@ -60,6 +63,7 @@ public final class CoreSelfTest {
         testIcpLicenseConfig();
         testSiteNameConfig();
         testConcurrencyConfig();
+        testMessagesReloadKeepsOldOnFailure();
 
         System.out.println();
         System.out.println("通过 " + passed + " 项，失败 " + failed + " 项");
@@ -430,6 +434,43 @@ public final class CoreSelfTest {
     }
 
     // ------------------------------------------------------------ 会话
+
+    // ------------------------------------------- 语言表重载
+
+    /**
+     * 重载语言文件失败时，必须保留原来那份，而不是把页面文案弄成空白。
+     *
+     * 以前 load() 是就地 clear() 再逐个 put()，一旦中途失败（目录读不到、
+     * 一个 yml 都没有），表就空着，整站文案变键名。改成写时复制之后，
+     * 新表建好之前旧表一直有效。
+     */
+    private static void testMessagesReloadKeepsOldOnFailure() throws Exception {
+        System.out.println("\n== 语言表重载失败要保留旧表 ==");
+
+        java.nio.file.Path dir = java.nio.file.Files.createTempDirectory("imgup-msg-reload");
+        String zh = Resources.readText("messages/zh.yml");
+        java.nio.file.Path zhFile = dir.resolve("zh.yml");
+        java.nio.file.Files.writeString(zhFile, zh, java.nio.charset.StandardCharsets.UTF_8);
+
+        Messages messages = new Messages(dir, "zh");
+        Logger quiet = Logger.getLogger("msg-reload");
+        quiet.setLevel(Level.OFF);
+        checkEquals("第一次加载成功", 1, messages.load(quiet));
+        String before = messages.get("zh", "site.home_heading");
+        check("能取到文案", before != null && !before.isEmpty()
+                && !before.equals("site.home_heading"), "拿到 " + before);
+
+        // 把语言文件删掉，再重载 —— 这一次必然失败
+        java.nio.file.Files.delete(zhFile);
+        checkEquals("文件没了就加载不出语言", 0, messages.load(quiet));
+        checkEquals("★ 失败后旧文案还在", before, messages.get("zh", "site.home_heading"));
+        check("默认语言仍然是 zh", "zh".equals(messages.defaultLang()));
+
+        // 恢复正常之后还能加载回来
+        java.nio.file.Files.writeString(zhFile, zh, java.nio.charset.StandardCharsets.UTF_8);
+        checkEquals("恢复后重新加载成功", 1, messages.load(quiet));
+        checkEquals("文案还是那句", before, messages.get("zh", "site.home_heading"));
+    }
 
     // ------------------------------------------- 上传并发上限配置
 

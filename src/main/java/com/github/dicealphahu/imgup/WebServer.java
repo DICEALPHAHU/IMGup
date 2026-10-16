@@ -110,6 +110,9 @@ public final class WebServer {
     /** 每个 IP 的取码记录，用于限流。 */
     private final Map<String, List<Long>> codeHits = new LinkedHashMap<>();
 
+    /** 后台登录**失败**记录（只记失败，正常登录登出不会被误伤）。 */
+    private final Map<String, List<Long>> loginHits = new LinkedHashMap<>();
+
     /**
      * 后台登录会话：token -> 过期时间。
      *
@@ -119,6 +122,11 @@ public final class WebServer {
     private final Map<String, Long> adminTokens = new LinkedHashMap<>();
 
     private static final long ADMIN_TTL_MILLIS = 12 * 3600_000L;
+    /** 停网站时留给在途请求的宽限期（秒）。太长会让 /imgup reload 卡住服务端主线程。 */
+    private static final int GRACE_SECONDS = 2;
+
+    private static final long HOUR_MILLIS = 3600_000L;
+    private static final long WINDOW_MILLIS = HOUR_MILLIS;
 
     private HttpServer server;
     private ExecutorService executor;
@@ -178,6 +186,7 @@ public final class WebServer {
             running = true;
             log.info("内置网站已启动：http://" + displayHost() + ":" + port()
                     + "（对外地址 " + config.base() + "）");
+            warnIfBaseUrlLooksWrong();
             return true;
         } catch (IOException e) {
             log.log(Level.SEVERE, "内置网站启动失败，插件其余功能仍可用："
@@ -187,21 +196,53 @@ public final class WebServer {
         }
     }
 
+    /**
+     * web.public_base_url 留空、又监听所有网卡时，给玩家看的地址会是 127.0.0.1 ——
+     * 玩家点不开，而站长很难意识到问题出在这里。启动时说清楚。
+     */
+    private void warnIfBaseUrlLooksWrong() {
+        if (config.publicBaseUrl != null && !config.publicBaseUrl.isEmpty()) {
+            return;
+        }
+        String shown = config.host == null ? "" : config.host;
+        boolean allInterfaces = shown.isEmpty() || shown.equals("0.0.0.0") || shown.equals("::");
+        if (allInterfaces) {
+            log.warning("config.yml 里的 web.public_base_url 是空的，而 web.host 监听所有网卡，"
+                    + "所以发给玩家的地址会是 http://127.0.0.1:" + port()
+                    + " —— 玩家点不开。请把 web.public_base_url 填成对外地址，"
+                    + "例如 http://你的服务器IP:" + port());
+        }
+    }
+
+    /**
+     * 停止网站。
+     *
+     * 这里给正在处理的请求留一点时间，而不是立刻掐断 —— /imgup reload 会把整个
+     * WebServer 停掉重建，用 stop(0) + shutdownNow() 的话，正在上传的玩家会看到
+     * 上传失败，明明他什么都没做错。
+     *
+     * 代价是这个方法会阻塞最多 GRACE_SECONDS 秒（它在服务端主线程上跑），所以
+     * 宽限期不能给太长；真的卡住的请求（比如空闲超时还没到的那种）照样会被切掉。
+     */
     public void stop() {
         running = false;
         if (server != null) {
             try {
-                server.stop(0);
+                // 等正在处理的 exchange 自己结束，最多 GRACE_SECONDS 秒
+                server.stop(GRACE_SECONDS);
             } catch (RuntimeException ignored) {
                 // 停的时候出问题无所谓
             }
             server = null;
         }
         if (executor != null) {
-            executor.shutdownNow();
+            executor.shutdown();          // 不再接新任务，已有的让它跑完
             try {
-                executor.awaitTermination(2, TimeUnit.SECONDS);
+                if (!executor.awaitTermination(GRACE_SECONDS, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();   // 宽限期过了还没完的，只能强停
+                }
             } catch (InterruptedException e) {
+                executor.shutdownNow();
                 Thread.currentThread().interrupt();
             }
             executor = null;
@@ -403,8 +444,15 @@ public final class WebServer {
             return serveStatic(exchange, path.substring("/static/".length()));
         }
         if (path.equals("/favicon.ico")) {
-            exchange.sendResponseHeaders(204, -1);
-            return 204;
+            // 有些浏览器不认 <link rel="icon"> 里的 svg，还是会盲请求 /favicon.ico。
+            // 直接把同一份 svg 给它（现代浏览器接受 svg 内容的 ico 请求）。
+            byte[] icon = Resources.read("web/favicon.svg");
+            if (icon == null) {
+                exchange.sendResponseHeaders(204, -1);
+                return 204;
+            }
+            return sendBytes(exchange, 200, icon, "image/svg+xml; charset=utf-8",
+                    "public, max-age=86400", null);
         }
         if (path.equals("/") ) {
             return servePage(exchange, "index");
@@ -618,14 +666,9 @@ public final class WebServer {
                 return sendJson(exchange, 400, error("no_file", 400, "没有收到文件，请选择一张图片", null));
             }
 
-            ImageTools.Processed processed;
-            try {
-                processed = ImageTools.process(file.data(), config.maxUploadBytes,
-                        config.maxDimension, config.maxPixels, config.jpegQuality);
-            } catch (ImageTools.ImageException e) {
-                return sendJson(exchange, 400, error(e.code(), 400, e.getMessage(), null));
-            }
-
+            // 限额先查、图片后处理。这两项都是纯内存计数，很便宜；
+            // 而 ImageTools.process 要完整解码 + 缩放 + 编码（峰值可达上百 MB）。
+            // 放在后面等于「已经超额的人每次还能白烧一次 CPU 和内存」。
             if (config.perPlayerDaily > 0 && store.uploadedToday(player) >= config.perPlayerDaily) {
                 return sendJson(exchange, 429, error("rate_limited", 429,
                         "你今天上传的图片太多了，明天再来吧",
@@ -638,6 +681,14 @@ public final class WebServer {
                             "待审核的图片太多了，请等站长处理完再上传",
                             Map.of("max", config.pendingMax)));
                 }
+            }
+
+            ImageTools.Processed processed;
+            try {
+                processed = ImageTools.process(file.data(), config.maxUploadBytes,
+                        config.maxDimension, config.maxPixels, config.jpegQuality);
+            } catch (ImageTools.ImageException e) {
+                return sendJson(exchange, 400, error(e.code(), 400, e.getMessage(), null));
             }
 
             String nickname = form.field("nickname");
@@ -805,9 +856,18 @@ public final class WebServer {
             return sendJson(exchange, 401, error("bad_password", 401,
                     "后台没有设置密码，请在 config.yml 里填 web.admin_password", null));
         }
+        String ip = remoteIp(exchange);
+        // 只统计失败次数：正常的登录/登出不该被自己的限流挡住。
+        // 密码本来是随机生成的，但站长可能手动改成弱密码，所以这里要有兜底。
+        if (loginTooManyAttempts(ip)) {
+            log.warning("后台登录尝试过于频繁，暂时拒绝：" + ip);
+            return sendJson(exchange, 429, error("too_many_attempts", 429,
+                    "尝试次数太多，请过一会儿再试", null));
+        }
         String given = Json.string(readJson(exchange), "password");
         if (!constantTimeEquals(given, config.adminPassword)) {
-            log.warning("后台登录失败，来自 " + remoteIp(exchange));
+            rememberLoginFailure(ip);
+            log.warning("后台登录失败，来自 " + ip);
             return sendJson(exchange, 401, error("bad_password", 401, "密码不对", null));
         }
         String token = newToken();
@@ -982,15 +1042,47 @@ public final class WebServer {
     }
 
     /**
-     * 后台预览：待审核和被拒绝的图也能看，方便站长判断。
-     * 没做登录，因为只有站内页面会引用它，而文件名本身是随机化的长名字；
-     * 真要严格，可以在 config.yml 里关掉 web.auto_publish 自己审核，或改文件名。
+     * 待审核 / 被拒绝的图片预览。**必须鉴权。**
+     *
+     * 以前这里是不设防的，理由写的是「文件名本身是随机化的长名字」—— 那个前提是错的：
+     * 默认命名就是可猜的 &lt;玩家&gt;-&lt;昵称&gt;.jpg，所以任何人都能枚举出待审甚至
+     * **已被拒绝**的图片，审核等于形同虚设（实测未登录直接 200）。
+     *
+     * 谁可以看：
+     *   · 后台管理员（审核时要看）
+     *   · 这张图的**属主**（玩家要确认自己传的是哪张）
+     * 其余一律 404 —— 不用 403，避免泄露「这个文件名存在」这个信息。
      */
     private int servePreview(HttpExchange exchange, String rawName) throws IOException {
         String name = URLDecoder.decode(rawName, StandardCharsets.UTF_8);
-        if (!Texts.isSafeFileName(name, config.maxNameLength)) {
-            return sendJson(exchange, 404, error("not_found", 404, "文件名不合法", null));
+        // 注意 sendJson 是「真的把响应发出去」而不是构造返回值，
+        // 所以只能在确实要拒绝的那条路径上调用它，不能提前算好备用。
+        if (!Texts.isSafeFileName(name, config.maxNameLength)
+                || !canSeePreview(exchange, name)) {
+            return sendJson(exchange, 404, error("not_found", 404, "找不到这张图片", null));
         }
+        return sendPreviewFile(exchange, name);
+    }
+
+    /** 谁能看未发布的图：后台管理员，或者这张图的属主。 */
+    private boolean canSeePreview(HttpExchange exchange, String name) {
+        if (checkAdmin(exchange)) {
+            return true;
+        }
+        UploadStore.Item item = store.get(name);
+        if (item == null) {
+            return false;
+        }
+        // 已发布的图本来就是公开的（/uploads/ 谁都能取），这里不必再设限，
+        // 免得同一个文件两个地址行为不一致。
+        if (UploadStore.STATUS_PUBLISHED.equals(item.status)) {
+            return true;
+        }
+        Sessions.Session session = currentSession(exchange, false);
+        return session != null && session.verified() && item.player.equals(session.player);
+    }
+
+    private int sendPreviewFile(HttpExchange exchange, String name) throws IOException {
         UploadStore.Item item = store.get(name);
         if (item == null) {
             return sendJson(exchange, 404, error("not_found", 404, "找不到这张图片", null));
@@ -1441,20 +1533,48 @@ public final class WebServer {
 
     private boolean allowNewCode(String ip) {
         long now = System.currentTimeMillis();
-        long window = 3600_000L;
         synchronized (codeHits) {
-            List<Long> hits = codeHits.computeIfAbsent(ip, k -> new ArrayList<>());
-            hits.removeIf(t -> now - t > window);
-            if (hits.size() >= config.newCodePerHour) {
+            if (recentCount(codeHits, ip, now, HOUR_MILLIS) >= config.newCodePerHour) {
                 return false;
             }
-            hits.add(now);
-            if (codeHits.size() > 4096) {
-                // 简单的防膨胀：清掉已经全过期的记录
-                codeHits.entrySet().removeIf(e -> e.getValue().stream()
-                        .allMatch(t -> now - t > window));
-            }
+            remember(codeHits, ip, now);
             return true;
+        }
+    }
+
+    /** 这个 IP 最近的失败次数，够多了就不要再让他试密码。 */
+    private boolean loginTooManyAttempts(String ip) {
+        synchronized (loginHits) {
+            return recentCount(loginHits, ip, System.currentTimeMillis(), HOUR_MILLIS)
+                    >= config.loginPerIpHour;
+        }
+    }
+
+    private void rememberLoginFailure(String ip) {
+        synchronized (loginHits) {
+            remember(loginHits, ip, System.currentTimeMillis());
+        }
+    }
+
+    /**
+     * 滑动窗口里这个 IP 还有多少条记录（顺手丢掉过期的）。
+     * 表本身也要防膨胀：超过 4096 个 IP 就整体清一遍过期项。
+     */
+    private static int recentCount(Map<String, List<Long>> table, String ip,
+                                   long now, long window) {
+        List<Long> hits = table.get(ip);
+        if (hits == null) {
+            return 0;
+        }
+        hits.removeIf(t -> now - t > window);
+        return hits.size();
+    }
+
+    private static void remember(Map<String, List<Long>> table, String ip, long now) {
+        table.computeIfAbsent(ip, k -> new ArrayList<>()).add(now);
+        if (table.size() > 4096) {
+            table.entrySet().removeIf(e -> e.getValue().stream()
+                    .allMatch(t -> now - t > WINDOW_MILLIS));
         }
     }
 

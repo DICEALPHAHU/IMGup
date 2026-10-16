@@ -1,10 +1,17 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="$lang">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>$msg_upload_title · $site_name$msg_site_title_suffix</title>
+<meta name="description" content="$msg_site_og_description">
+<meta property="og:title" content="$msg_upload_title · $site_name$msg_site_title_suffix">
+<meta property="og:description" content="$msg_site_og_description">
+<meta property="og:type" content="website">
+<!-- theme-color 让手机浏览器的地址栏跟着站点的深色底走 -->
+<meta name="theme-color" content="#131317">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/i18n.js"></script>
 </head>
@@ -51,10 +58,12 @@
           <p class="mono" id="fileName">—</p>
           <p class="muted" id="fileSize">—</p>
           <p class="muted">$msg_upload_pickAgain</p>
+          <p class="muted" id="squareWarn" hidden></p>
         </div>
       </div>
 
       <p class="panel-note">$msg_upload_limits</p>
+      <p class="panel-note">$msg_upload_squareHint</p>
     </section>
 
     <section class="panel">
@@ -114,6 +123,7 @@
   var fileInput = document.getElementById('fileInput');
   var preview = document.getElementById('preview');
   var previewImg = document.getElementById('previewImg');
+  var squareWarn = document.getElementById('squareWarn');
   var fileName = document.getElementById('fileName');
   var fileSize = document.getElementById('fileSize');
   var nickname = document.getElementById('nickname');
@@ -209,7 +219,7 @@
   function validate(file) {
     if (!file) return { key: 'upload.errNoFile' };
     if (!detectKind(file)) {
-      return { key: 'upload.errType', params: { type: file.type || file.name || '未知类型' } };
+      return { key: 'upload.errType', params: { type: file.type || file.name || t('upload.unknownType') } };
     }
     if (file.size <= 0) return { key: 'upload.errEmpty' };
     if (file.size > MAX_BYTES) {
@@ -236,8 +246,20 @@
     try { objectUrl = URL.createObjectURL(file); } catch (e) { objectUrl = ''; }
     if (objectUrl) { previewImg.src = objectUrl; }
 
-    fileName.textContent = file.name || '(未命名)';
-    fileSize.textContent = fmtBytes(file.size) + ' · ' + detectKind(file) + ' · 会自动缩放';
+    // 地图是正方形的：非正方形只提醒，不阻止上传（有人就想要横幅效果）。
+    // 用图片自身的宽高判断，所以要等它加载完。
+    squareWarn.hidden = true;
+    previewImg.onload = function () {
+      var w = previewImg.naturalWidth;
+      var h = previewImg.naturalHeight;
+      if (w > 0 && h > 0 && w !== h) {
+        squareWarn.textContent = t('upload.squareWarn', { size: w + 'x' + h });
+        squareWarn.hidden = false;
+      }
+    };
+
+    fileName.textContent = file.name || t('upload.untitled');
+    fileSize.textContent = t('upload.fileInfo', { size: fmtBytes(file.size), kind: detectKind(file) });
     dropTitle.textContent = t('upload.dropTitleChosen');
     preview.classList.remove('hidden');
     submitBtn.disabled = false;
@@ -320,12 +342,12 @@
 
   function updateNamePreview() {
     var nick = sanitizeNickname(nickname.value, NICKNAME_MAX);
-    var who = playerName || '玩家';
+    var who = playerName || t('common.unknownPlayer');
     if (!current) {
       namePreview.textContent = t('upload.namePreviewNone');
       return;
     }
-    if (!nick) { nick = '原文件名'; }
+    if (!nick) { nick = t('common.originalFileName'); }
     namePreview.textContent = who + '-' + nick + '.' + extOf(current);
   }
 

@@ -1,10 +1,17 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="$lang">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>$msg_index_title · $site_name$msg_site_title_suffix</title>
+<meta name="description" content="$msg_site_og_description">
+<meta property="og:title" content="$msg_index_title · $site_name$msg_site_title_suffix">
+<meta property="og:description" content="$msg_site_og_description">
+<meta property="og:type" content="website">
+<!-- theme-color 让手机浏览器的地址栏跟着站点的深色底走 -->
+<meta name="theme-color" content="#131317">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/i18n.js"></script>
 </head>
@@ -36,7 +43,7 @@
 
     <div class="hidden" id="codeArea">
       <p class="sub-title">$msg_index_yourCode</p>
-      <button class="code-box" type="button" id="codeBox" data-i18n-attr="title:index.codeBoxTitle" title="点击复制上传码">--------</button>
+      <button class="code-box" type="button" id="codeBox" title="$msg_index_codeBoxTitle">--------</button>
       <span class="field-hint" id="copyState" role="status"></span>
       <p class="progress-text" id="countdown"></p>
       <p class="muted" id="pollState"></p>

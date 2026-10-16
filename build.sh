@@ -83,6 +83,7 @@ jar --create --file "$OUT_DIR/$JAR_NAME" -C "$OUT_DIR/classes" .
 echo "==> 校验产物"
 python3 - "$OUT_DIR/$JAR_NAME" <<'PY'
 import glob
+import xml.etree.ElementTree as ET
 import re
 import sys
 import zipfile
@@ -168,16 +169,54 @@ with zipfile.ZipFile(jar) as zf:
         return key.replace(".", "_")
 
     by_form = {form_of(k): k for k in tables["zh"]}
+
+    def strip_comments(text):
+        # 注释里可能为了举例写出 $msg_xxx 这种字面量，不该算「模板引用了这个键」。
+        # 用等量换行替换，保证后面报的行号还对得上。
+        def blank(match):
+            return "\n" * match.group(0).count("\n")
+
+        out = re.sub(r"<!--.*?-->", blank, text, flags=re.S)
+        out = re.sub(r"/\*.*?\*/", blank, out, flags=re.S)
+        return re.sub(r"(?m)(^|\s)//[^\n]*", lambda m: m.group(1), out)
+
     missing = []
     for page in ("index", "upload", "result", "admin"):
         with zf.open("web/" + page + ".html") as fh:
-            html = fh.read().decode("utf-8")
+            html = strip_comments(fh.read().decode("utf-8"))
         for var in sorted(set(re.findall(r"\$msg_([a-zA-Z0-9_]+)", html))):
             if var not in by_form:
                 missing.append(page + ".html 的 $msg_" + var + " 没有对应的键")
     if missing:
         sys.exit("模板占位符在语言文件里找不到（会渲染成空白）：" + "; ".join(missing[:5]))
     print("    模板里的 $msg_ 占位符都能在语言文件里找到")
+
+    # 模板里不允许有硬编码的**可见**中文。语言文件才是文案的唯一来源 ——
+    # 硬编码会让英文界面冒出中文，而且站长根本不知道该改哪一条。
+    # （这正是 index.html 的 title、result.html 的 data-label、admin.html 的
+    #   「加载中…」当初躲过检查的方式：校验只查了 messages/*.yml，没查模板。）
+    #
+    # 注释不算。为了报错时行号还对得上，把注释替换成等量的换行而不是直接删掉。
+    def blank_comments(match):
+        return "\n" * match.group(0).count("\n")
+
+    cjk = re.compile(r"[\u4e00-\u9fff]")
+    hardcoded = []
+    for page in ("index", "upload", "result", "admin"):
+        with zf.open("web/" + page + ".html") as fh:
+            html = fh.read().decode("utf-8")
+        clean = re.sub(r"<!--.*?-->", blank_comments, html, flags=re.S)
+        clean = re.sub(r"/\*.*?\*/", blank_comments, clean, flags=re.S)
+        clean = re.sub(r"(?m)(^|\s)//[^\n]*", lambda m: m.group(1), clean)
+        for number, line in enumerate(clean.split("\n"), 1):
+            if cjk.search(line):
+                hardcoded.append(page + ".html:" + str(number)
+                                 + " " + line.strip()[:44])
+    if hardcoded:
+        sys.exit("模板里有硬编码中文（英文界面会漏出来，应该走语言文件）："
+                 + " | ".join(hardcoded[:6]))
+    print("    模板里没有硬编码的可见中文")
+
 
     all_keys = set(tables["zh"])
 
@@ -327,6 +366,18 @@ with zipfile.ZipFile(jar) as zf:
         sys.exit("页面引用的静态资源在 jar 里不存在（页面会缺样式/脚本）："
                  + str(sorted(set(missing_assets))))
     print("    页面引用的 /static/ 资源都在 jar 里")
+
+    # SVG 必须是合法 XML。XML 注释里不允许出现两个连续的连字符，
+    # 而 CSS 变量名（--bg-deep 这种）正好是双连字符 —— 写进注释里图标就废了，
+    # 而且浏览器只是不显示，不会有任何报错，很难发现。
+    for asset in ("favicon.svg",):
+        with zf.open("web/" + asset) as fh:
+            raw = fh.read().decode("utf-8")
+        try:
+            ET.fromstring(raw)
+        except ET.ParseError as error:
+            sys.exit("web/" + asset + " 不是合法 XML（浏览器会直接不显示）：" + str(error))
+    print("    SVG 资源是合法 XML")
 
     # hidden 属性必须真能隐藏元素。
     # 浏览器默认的 [hidden]{display:none} 是 UA 样式，作者样式里任何一条 display

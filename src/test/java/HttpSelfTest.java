@@ -75,7 +75,8 @@ public final class HttpSelfTest {
                 .set("web.admin_password", "TESTPW123456")
                 .set("web.icp_license", "京ICP备12345678号-1")
                 .set("web.request_timeout_seconds", 5)
-                .set("limits.max_concurrent_uploads", 1);
+                .set("limits.max_concurrent_uploads", 1)
+                .set("limits.login_per_ip_per_hour", 1000);   // 限流单独起服务器测，见 testLoginRateLimit
         WebConfig config = WebConfig.from(stub);
 
         sessions = new Sessions(3600_000L, config.codeTtlMillis);
@@ -146,6 +147,8 @@ public final class HttpSelfTest {
             testFooterPluginLine();
             testStalledBodyIsDropped();
             testConcurrentUploadLimit();
+            testPreviewNeedsPermission();
+            testLoginRateLimit();
             testIcpLicenseLine();
             testMessageFileUpgradeMerge();
         } finally {
@@ -541,6 +544,138 @@ public final class HttpSelfTest {
         // 注入的那张表里也应该是同样的 HTML，前端覆盖时才不会丢样式
         check("注入表里也是同样的 HTML",
                 get("/").text().contains("<code>images.command.create</code>"));
+    }
+
+    // ------------------------------------------ 后台登录限流
+
+    /**
+     * 后台登录失败次数要有限，否则站长一旦把密码改弱就任人爆破。
+     *
+     * 限流是按 IP 记的，而测试全都来自 127.0.0.1 —— 跟别的登录测试共享状态会很脆。
+     * 所以这里单独起一个服务器，只给它 3 次额度，测完就关，不影响主服务器。
+     */
+    private static void testLoginRateLimit() throws Exception {
+        section("后台登录限流");
+
+        int port = freePort();
+        String url = "http://127.0.0.1:" + port;
+        ConfigStub stub = new ConfigStub()
+                .set("web.enabled", true)
+                .set("web.host", "127.0.0.1")
+                .set("web.port", port)
+                .set("web.public_base_url", url)
+                .set("web.auto_publish", true)
+                .set("web.site_name", "测试站名")
+                .set("web.admin_enabled", true)
+                .set("web.admin_password", "TESTPW123456")
+                .set("limits.login_per_ip_per_hour", 3);
+        WebConfig config = WebConfig.from(stub);
+        Messages msgs = new Messages(java.nio.file.Paths.get("__messages__"), config.language);
+        msgs.loadTestFixtures(java.nio.file.Paths.get("__messages__"));
+        WebServer isolated = new WebServer(java.util.logging.Logger.getLogger("login-limit"),
+                config, new UploadStore(dataDir.resolve("limit"), imagesDir),
+                new Sessions(3600_000L, config.codeTtlMillis), msgs, new WebServer.GameBridge() {
+            public void notify(String player, String key, String... pairs) {
+            }
+
+            public boolean isOnline(String player) {
+                return false;
+            }
+
+            public String serverMotd() {
+                return "MOTD";
+            }
+
+            public String serverName() {
+                return "Server";
+            }
+        });
+        isolated.setPluginInfo("ImgUp", "1.0.0");
+        if (!isolated.start()) {
+            throw new IllegalStateException("限流测试用的服务器没起来");
+        }
+
+        try {
+            Session client = new Session(url);
+
+            // 成功的登录不计数：连登两次都该成功
+            checkEquals("正确密码登录成功", 200,
+                    client.postJson("/admin/api/login", "{\"password\":\"TESTPW123456\"}").status);
+            checkEquals("再登一次仍然成功（成功不计入限流）", 200,
+                    client.postJson("/admin/api/login", "{\"password\":\"TESTPW123456\"}").status);
+
+            // 额度是 3：前 3 次失败给 401，第 4 次开始 429
+            for (int i = 1; i <= 3; i++) {
+                checkEquals("第 " + i + " 次密码错误返回 401", 401,
+                        client.postJson("/admin/api/login", "{\"password\":\"wrong\"}").status);
+            }
+            Reply blocked = client.postJson("/admin/api/login", "{\"password\":\"wrong\"}");
+            checkEquals("超过额度后返回 429", 429, blocked.status);
+            check("提示是 too_many_attempts", blocked.text().contains("too_many_attempts"),
+                    "body=" + blocked.text());
+
+            // 被限流期间，就算撞对了密码也不放行
+            checkEquals("限流期间正确密码也进不去", 429,
+                    client.postJson("/admin/api/login", "{\"password\":\"TESTPW123456\"}").status);
+        } finally {
+            isolated.stop();
+        }
+    }
+
+    // ------------------------------------------ 未发布图片的预览鉴权
+
+    /**
+     * /preview/&lt;名字&gt; 必须鉴权。
+     *
+     * 以前这里完全不设防，注释写的理由是「文件名是随机化的长名字」——
+     * 但默认命名就是 &lt;玩家&gt;-&lt;昵称&gt;.jpg，可猜。于是任何人枚举一下就能看到
+     * 待审甚至**已被拒绝**的图片，审核形同虚设（实测过未登录直接 200）。
+     *
+     * 允许的只有两种人：后台管理员、以及这张图的属主。
+     */
+    private static void testPreviewNeedsPermission() throws Exception {
+        section("未发布图片的预览必须鉴权");
+
+        String name = "Frank-私密图.png";
+        store.store(name, "Frank", "私密图", png(20, 20), 20, 20, false);   // 待审
+        String path = "/preview/" + java.net.URLEncoder.encode(name, java.nio.charset.StandardCharsets.UTF_8);
+
+        // 1) 谁都不是
+        checkEquals("不带 cookie 拿不到待审图", 404, get(path).status);
+
+        // 2) 别的玩家（已确认会话）也拿不到
+        Session stranger = new Session();
+        Reply code = stranger.postJson("/api/newcode", "{}");
+        sessions.confirm(Json.string(Json.parseObject(code.text()), "code"), "Grace");
+        checkEquals("别的玩家拿不到", 404, get(path, stranger).status);
+
+        // 3) 属主可以拿
+        Session owner = new Session();
+        Reply ownerCode = owner.postJson("/api/newcode", "{}");
+        sessions.confirm(Json.string(Json.parseObject(ownerCode.text()), "code"), "Frank");
+        checkEquals("属主可以拿到自己的待审图", 200, get(path, owner).status);
+
+        // 4) 后台管理员可以拿
+        Session admin = new Session();
+        Reply login = admin.postJson("/admin/api/login",
+                "{\"password\":\"TESTPW123456\"}");
+        checkEquals("管理员登录成功", 200, login.status);
+        checkEquals("管理员可以拿到待审图", 200, get(path, admin).status);
+
+        // 5) 拒绝之后，路人依然拿不到（这是之前的漏洞：拒绝了自己还能继续分享）
+        store.reject(name, "测试拒绝");
+        checkEquals("被拒绝后路人仍拿不到", 404, get(path).status);
+        checkEquals("被拒绝后管理员还能看（审核要用）", 200, get(path, admin).status);
+
+        // 6) 已发布的图走 /uploads/，本来就是公开的
+        String published = "Frank-公开图.png";
+        store.store(published, "Frank", "公开图", png(20, 20), 20, 20, true);
+        String publicPath = "/uploads/" + java.net.URLEncoder.encode(published,
+                java.nio.charset.StandardCharsets.UTF_8);
+        checkEquals("已发布的图公开可访问", 200, get(publicPath).status);
+        checkEquals("已发布的图用 /preview/ 也照样公开", 200, get(
+                "/preview/" + java.net.URLEncoder.encode(published,
+                        java.nio.charset.StandardCharsets.UTF_8)).status);
     }
 
     // ------------------------------------------ 上传并发上限
@@ -1096,6 +1231,16 @@ public final class HttpSelfTest {
     /** 一个独立的「浏览器」：自己管 cookie。 */
     private static final class Session {
         private final Map<String, String> cookies = new LinkedHashMap<>();
+        /** 默认打主测试服务器；限流那些测试要打自己起的服务器，所以允许指定。 */
+        private final String root;
+
+        Session() {
+            this(base);
+        }
+
+        Session(String root) {
+            this.root = root;
+        }
 
         String cookie(String key) {
             return cookies.get(key);
@@ -1121,7 +1266,7 @@ public final class HttpSelfTest {
         }
 
         Reply postJson(String path, String body) throws Exception {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(base + path))
+            HttpRequest request = HttpRequest.newBuilder(URI.create(root + path))
                     .header("Content-Type", "application/json")
                     .header("Cookie", cookieHeader())
                     .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
@@ -1145,7 +1290,7 @@ public final class HttpSelfTest {
             out.write(data);
             out.writeBytes(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
 
-            HttpRequest request = HttpRequest.newBuilder(URI.create(base + path))
+            HttpRequest request = HttpRequest.newBuilder(URI.create(root + path))
                     .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                     .header("Cookie", cookieHeader())
                     .POST(HttpRequest.BodyPublishers.ofByteArray(out.toByteArray()))
