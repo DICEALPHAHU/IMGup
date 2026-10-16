@@ -1,4 +1,4 @@
-import com.huhumc.imgup.WebConfig;
+import com.github.dicealphahu.imgup.WebConfig;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

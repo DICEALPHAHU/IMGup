@@ -1,4 +1,4 @@
-package com.huhumc.imgup;
+package com.github.dicealphahu.imgup;
 
 import org.bukkit.configuration.file.YamlConfiguration;
 

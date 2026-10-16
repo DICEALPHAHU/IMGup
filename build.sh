@@ -91,13 +91,13 @@ jar = sys.argv[1]
 with zipfile.ZipFile(jar) as zf:
     names = zf.namelist()
     for required in ("plugin.yml", "config.yml",
-                     "com/huhumc/imgup/ImgUpPlugin.class",
-                     "com/huhumc/imgup/ImgUpCommand.class",
-                     "com/huhumc/imgup/WebServer.class",
-                     "com/huhumc/imgup/UploadStore.class",
-                     "com/huhumc/imgup/ImageTools.class",
-                     "com/huhumc/imgup/Messages.class",
-                     "com/huhumc/imgup/ServerProperties.class",
+                     "com/github/dicealphahu/imgup/ImgUpPlugin.class",
+                     "com/github/dicealphahu/imgup/ImgUpCommand.class",
+                     "com/github/dicealphahu/imgup/WebServer.class",
+                     "com/github/dicealphahu/imgup/UploadStore.class",
+                     "com/github/dicealphahu/imgup/ImageTools.class",
+                     "com/github/dicealphahu/imgup/Messages.class",
+                     "com/github/dicealphahu/imgup/ServerProperties.class",
                      # 网页资源必须打进去，否则插件起来了也没有页面
                      "web/index.html", "web/upload.html", "web/result.html",
                      "web/app.css", "web/i18n.js", "web/admin.html",
@@ -289,7 +289,7 @@ with zipfile.ZipFile(jar) as zf:
 
     # 版本号只能有一个来源（plugin.yml）。WebServer 里若写死版本号，
     # /api/health 报出来的就和插件实际版本对不上 —— 这种漂移直接拦掉。
-    with zf.open("com/huhumc/imgup/WebServer.class") as fh:
+    with zf.open("com/github/dicealphahu/imgup/WebServer.class") as fh:
         web_bytes = fh.read()
     import re as _re
     version_in_yml = _re.search(rb"version: ([0-9][^\r\n]*)", head.encode() if isinstance(head, str) else head)

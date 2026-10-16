@@ -1,9 +1,9 @@
-import com.huhumc.imgup.Messages;
-import com.huhumc.imgup.Resources;
-import com.huhumc.imgup.Sessions;
-import com.huhumc.imgup.UploadStore;
-import com.huhumc.imgup.WebConfig;
-import com.huhumc.imgup.WebServer;
+import com.github.dicealphahu.imgup.Messages;
+import com.github.dicealphahu.imgup.Resources;
+import com.github.dicealphahu.imgup.Sessions;
+import com.github.dicealphahu.imgup.UploadStore;
+import com.github.dicealphahu.imgup.WebConfig;
+import com.github.dicealphahu.imgup.WebServer;
 
 import java.net.URI;
 import java.net.http.HttpClient;

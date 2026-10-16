@@ -1,4 +1,4 @@
-package com.huhumc.imgup;
+package com.github.dicealphahu.imgup;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

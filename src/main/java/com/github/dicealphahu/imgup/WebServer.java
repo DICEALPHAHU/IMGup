@@ -1,4 +1,4 @@
-package com.huhumc.imgup;
+package com.github.dicealphahu.imgup;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;

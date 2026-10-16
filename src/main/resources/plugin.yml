@@ -1,8 +1,8 @@
 name: ImgUp
 version: 1.0.0
-main: com.huhumc.imgup.ImgUpPlugin
+main: com.github.dicealphahu.imgup.ImgUpPlugin
 api-version: '1.21'
-authors: [ huhumc ]
+authors: [ DICEALPHAHU ]
 description: 图片上传站：插件自带网站，玩家在网页上传图片、在游戏里贴海报
 website: https://github.com/DICEALPHAHU/ImgUp
 commands:

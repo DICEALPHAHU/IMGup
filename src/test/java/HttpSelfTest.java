@@ -1,10 +1,10 @@
-import com.huhumc.imgup.ImageTools;
-import com.huhumc.imgup.Messages;
-import com.huhumc.imgup.Json;
-import com.huhumc.imgup.Sessions;
-import com.huhumc.imgup.UploadStore;
-import com.huhumc.imgup.WebConfig;
-import com.huhumc.imgup.WebServer;
+import com.github.dicealphahu.imgup.ImageTools;
+import com.github.dicealphahu.imgup.Messages;
+import com.github.dicealphahu.imgup.Json;
+import com.github.dicealphahu.imgup.Sessions;
+import com.github.dicealphahu.imgup.UploadStore;
+import com.github.dicealphahu.imgup.WebConfig;
+import com.github.dicealphahu.imgup.WebServer;
 
 import javax.imageio.ImageIO;
 import java.awt.Color;
@@ -714,7 +714,7 @@ public final class HttpSelfTest {
 
             Messages m = new Messages(dir, "zh");
             int added = m.mergeDefaults(java.util.logging.Logger.getLogger("merge-test"),
-                    com.huhumc.imgup.Resources::readText);
+                    com.github.dicealphahu.imgup.Resources::readText);
 
             check("补进了新键", added > 0, "补了 " + added + " 个");
 
@@ -739,7 +739,7 @@ public final class HttpSelfTest {
 
             // 幂等：再合并一次不该重复追加
             int again = m.mergeDefaults(java.util.logging.Logger.getLogger("merge-test"),
-                    com.huhumc.imgup.Resources::readText);
+                    com.github.dicealphahu.imgup.Resources::readText);
             checkEquals("重复合并不会再追加", 0, again);
         } finally {
             try (var walk = Files.walk(dir)) {
