@@ -231,6 +231,22 @@ with zipfile.ZipFile(jar) as zf:
     if missing_game:
         sys.exit("代码里用了但语言文件里没定义的 game.* 键：" + str(missing_game))
     print("    用到的 " + str(len(used_game)) + " 个 game.* 键都有定义")
+
+    # 页面里引用的 /static/xxx 必须在 jar 里真的存在。
+    # 这条是血的教训：样式表从 style.css 改名成 app.css 之后，三个页面还指着
+    # 旧名字，页面完全没样式，但当时所有测试照样全绿。
+    jar_web = {n for n in zf.namelist() if n.startswith("web/")}
+    missing_assets = []
+    for page in ("index", "upload", "result", "admin"):
+        with zf.open("web/" + page + ".html") as fh:
+            html = fh.read().decode("utf-8")
+        for ref in re.findall(r'(?:href|src)="(/static/[^"#?]+)"', html):
+            if "web/" + ref[len("/static/"):] not in jar_web:
+                missing_assets.append(page + " -> " + ref)
+    if missing_assets:
+        sys.exit("页面引用的静态资源在 jar 里不存在（页面会缺样式/脚本）："
+                 + str(sorted(set(missing_assets))))
+    print("    页面引用的 /static/ 资源都在 jar 里")
 PY
 
 ls -la "$OUT_DIR/$JAR_NAME"

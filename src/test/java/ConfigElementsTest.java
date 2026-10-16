@@ -121,6 +121,7 @@ public final class ConfigElementsTest {
             checkHeadings(base);
             checkFooterServerInfo(base);
             checkAdminPage(base);
+            checkEveryAssetResolves(base);
             checkPage(base + "/result", "结果页", List.of(
                     "site.title", "site.brand", "site.nav_reupload",
                     "site.result_heading", "site.result_rename_title",
@@ -183,6 +184,61 @@ public final class ConfigElementsTest {
         }
     }
 
+    /**
+     * 页面里引用的每个本地资源都必须真能取到。
+     *
+     * 这条是血的教训：样式表文件名改过之后，三个页面还指着旧名字，
+     * 页面上一点样式都没有，但「页面元素齐不齐」的测试完全看不出来。
+     */
+    private static void checkEveryAssetResolves(String base) throws Exception {
+        System.out.println("\n=== 页面引用的资源都要能取到 ===");
+        java.util.regex.Pattern ref =
+                java.util.regex.Pattern.compile("(?:href|src)=\"(/[^\"#?]*)\"");
+        java.util.TreeSet<String> checked = new java.util.TreeSet<>();
+        java.util.List<String> broken = new java.util.ArrayList<>();
+
+        for (String page : new String[]{"/", "/upload", "/result", "/admin"}) {
+            String html = fetch(base + page);
+            java.util.regex.Matcher m = ref.matcher(html);
+            while (m.find()) {
+                String path = m.group(1);
+                // 模板变量（$url 之类）和纯锚点跳过
+                if (path.contains("$") || path.isEmpty()) {
+                    continue;
+                }
+                if (!checked.add(path)) {
+                    continue;
+                }
+                int status = statusOf(base + path);
+                // 204 = 没有 favicon 时的正常回应
+                if (status != 200 && status != 204) {
+                    broken.add(path + " -> HTTP " + status);
+                }
+            }
+        }
+
+        System.out.println("     检查了 " + checked.size() + " 个引用：" + checked);
+        if (broken.isEmpty()) {
+            ok++;
+            System.out.println("  [OK]   所有引用的资源都能取到");
+        } else {
+            bad++;
+            System.out.println("  [!!]   这些引用取不到（页面会缺样式或脚本）：" + broken);
+        }
+
+        // 单独把样式表和脚本点出来，它们没了页面就废了
+        for (String must : new String[]{"/static/app.css", "/static/i18n.js"}) {
+            int status = statusOf(base + must);
+            if (status == 200) {
+                ok++;
+                System.out.println("  [OK]   " + must + " 可访问");
+            } else {
+                bad++;
+                System.out.println("  [!!]   " + must + " 取不到，HTTP " + status);
+            }
+        }
+    }
+
     /** 后台页面必须能打开（未登录时显示登录框）。 */
     private static void checkAdminPage(String base) throws Exception {
         System.out.println("\n=== 后台页面 ===");
@@ -225,6 +281,15 @@ public final class ConfigElementsTest {
             bad++;
             System.out.println("  [!!]   页面里有没替换掉的占位符：" + m.group());
         }
+    }
+
+    /** 只取状态码，不读 body。 */
+    private static int statusOf(String url) throws Exception {
+        java.net.http.HttpResponse<Void> response = java.net.http.HttpClient.newHttpClient().send(
+                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url))
+                        .method("GET", java.net.http.HttpRequest.BodyPublishers.noBody()).build(),
+                java.net.http.HttpResponse.BodyHandlers.discarding());
+        return response.statusCode();
     }
 
     private static String fetch(String url) throws Exception {
