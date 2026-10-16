@@ -73,7 +73,8 @@ public final class HttpSelfTest {
                 .set("site.brand", "图片上传站")
                 .set("site.brand_en", "Image Upload")
                 .set("web.admin_enabled", true)
-                .set("web.admin_password", "TESTPW123456");
+                .set("web.admin_password", "TESTPW123456")
+                .set("web.icp_license", "京ICP备12345678号-1");
         WebConfig config = WebConfig.from(stub);
 
         sessions = new Sessions(3600_000L, config.codeTtlMillis);
@@ -142,6 +143,7 @@ public final class HttpSelfTest {
             testInjectedMessagesHaveNoRawPlaceholders();
             testFooterUsesInlineCode();
             testFooterPluginLine();
+            testIcpLicenseLine();
             testMessageFileUpgradeMerge();
         } finally {
             server.stop();
@@ -549,6 +551,33 @@ public final class HttpSelfTest {
         check("页脚没有残留 {name}/{version} 占位符",
                 !html.contains("{name}") && !html.contains("{version}"),
                 "还露着占位符");
+    }
+
+    // ------------------------------------------ 页脚的备案号
+
+    /** 配了备案号就要显示在页脚最底部，并链到工信部查询页。 */
+    private static void testIcpLicenseLine() throws Exception {
+        section("页脚：备案号");
+
+        for (String page : new String[]{"/", "/upload", "/result", "/admin"}) {
+            String html = get(page).text()
+                    .replaceAll("(?s)<script>window\\.IMGUP_.*?</script>", "");
+
+            check(page + " 页脚显示了备案号",
+                    html.contains("备案号：京ICP备12345678号-1"),
+                    "页脚里没找到备案号");
+            check(page + " 备案号链到工信部查询页",
+                    html.contains("href=\"https://beian.miit.gov.cn/\""),
+                    "备案号没有链接");
+            check(page + " 备案号在页脚最底部（在插件信息行之后）",
+                    html.indexOf("京ICP备12345678号-1") > html.indexOf("ImgUp 9.9.9-test"),
+                    "备案号没有排在插件信息行下面");
+        }
+
+        // {number} 必须被替换掉，不能露到页面上
+        String html = get("/").text();
+        check("备案号没残留 {number} 占位符", !html.contains("{number}"),
+                "还露着 {number}");
     }
 
     // ------------------------------------------ 语言文件升级合并

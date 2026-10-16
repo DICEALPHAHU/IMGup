@@ -3,6 +3,8 @@ import com.huhumc.imgup.ServerProperties;
 import com.huhumc.imgup.Json;
 import com.huhumc.imgup.Multipart;
 import com.huhumc.imgup.Sessions;
+import com.huhumc.imgup.WebConfig;
+import com.huhumc.imgup.Resources;
 import com.huhumc.imgup.Texts;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -55,6 +57,7 @@ public final class CoreSelfTest {
         testSessionsConfirmFlow();
         testServerProperties();
         testInlineCode();
+        testIcpLicenseConfig();
 
         System.out.println();
         System.out.println("通过 " + passed + " 项，失败 " + failed + " 项");
@@ -425,6 +428,35 @@ public final class CoreSelfTest {
     }
 
     // ------------------------------------------------------------ 会话
+
+    // ------------------------------------------- 备案号配置
+
+    /**
+     * 备案号默认必须是空的 —— 没有备案要求的站点不该在页脚多出一行占位。
+     * 这是站长特意交代的：「留个空键值」，别把某个站点的备案号当默认值。
+     */
+    private static void testIcpLicenseConfig() {
+        System.out.println("\n== 备案号配置 ==");
+
+        WebConfig 默认 = WebConfig.from(new ConfigStub());
+        checkEquals("不配时默认为空", "", 默认.icpLicense);
+
+        WebConfig 空白 = WebConfig.from(new ConfigStub().set("web.icp_license", "   "));
+        checkEquals("只填空格等于没填", "", 空白.icpLicense);
+
+        WebConfig 填了 = WebConfig.from(
+                new ConfigStub().set("web.icp_license", "  京ICP备12345678号-1  "));
+        checkEquals("两侧空白会被去掉", "京ICP备12345678号-1", 填了.icpLicense);
+
+        // 默认配置文件里这一项也必须是空的（不能把某个站点的号写进去）
+        String config = Resources.readText("config.yml");
+        check("config.yml 里有 icp_license 键", config != null && config.contains("icp_license:"));
+        check("config.yml 里的默认值是空的",
+                config != null && java.util.regex.Pattern
+                        .compile("^\\s*icp_license:\\s*\"\"\\s*$",
+                                java.util.regex.Pattern.MULTILINE).matcher(config).find(),
+                "默认值不是空字符串");
+    }
 
     // ------------------------------------------- 行内代码（反引号）
 

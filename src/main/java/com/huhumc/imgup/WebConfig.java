@@ -126,6 +126,12 @@ public final class WebConfig {
     /** 关掉后 /admin 直接返回 404，连登录页都没有。 */
     public final boolean adminEnabled;
 
+    /**
+     * 备案号（例如「京ICP备12345678号-1」）。默认为空 —— 没有备案要求的站点
+     * 不用管它，页脚也不会多出一行空占位。填了才会显示在页脚最底部。
+     */
+    public final String icpLicense;
+
     private WebConfig(Source cfg) {
         this.enabled = cfg.getBoolean("web.enabled", true);
         this.host = cfg.getString("web.host", "0.0.0.0");
@@ -156,6 +162,7 @@ public final class WebConfig {
         this.showCopyButtons = cfg.getBoolean("site.show_copy_buttons", true);
         this.adminPassword = cfg.getString("web.admin_password", "").trim();
         this.adminEnabled = cfg.getBoolean("web.admin_enabled", true);
+        this.icpLicense = cfg.getString("web.icp_license", "").trim();
     }
 
     /** 从 Bukkit 配置构造（插件里用这个）。 */

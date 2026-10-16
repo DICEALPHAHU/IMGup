@@ -82,6 +82,9 @@ public final class WebServer {
     /** 源码仓库地址。只在这里定义一处，模板用 $plugin_url 取。 */
     private static final String PLUGIN_URL = "https://github.com/DICEALPAHU/IMGup";
 
+    /** 工信部备案查询地址。备案号按国内惯例链到这里。 */
+    private static final String ICP_LOOKUP_URL = "https://beian.miit.gov.cn/";
+
     /** 每个 IP 的取码记录，用于限流。 */
     private final Map<String, List<Long>> codeHits = new LinkedHashMap<>();
 
@@ -981,6 +984,14 @@ public final class WebServer {
         //   2. 注入给前端的整张表
         // 两处必须用同一份「已替换」的值：如果注入的表里还留着 {motd}，
         // 前端引擎会在浏览器里把页脚覆盖成带 {motd} 的样子。
+        // 备案号那一行：没配就整行不出现（而不是显示一个空的「备案号：」）
+        String icp = config.icpLicense == null ? "" : config.icpLicense.trim();
+        values.put("icp_block", icp.isEmpty() ? ""
+                : "<p class=\"foot-icp\"><a href=\"" + ICP_LOOKUP_URL
+                  + "\" target=\"_blank\" rel=\"noopener noreferrer\">"
+                  + messages.html(lang, "site.footer_icp", "number", icp)
+                  + "</a></p>");
+
         Map<String, String> substituted = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : messages.table(lang).entrySet()) {
             String key = entry.getKey();

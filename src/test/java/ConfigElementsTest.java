@@ -267,6 +267,19 @@ public final class ConfigElementsTest {
             System.out.println("  [!!]   这些引用取不到（页面会缺样式或脚本）：" + broken);
         }
 
+        // 没配备案号时，页脚不该多出一行空的「备案号：」
+        System.out.println("\n=== 没配备案号时不显示这一行 ===");
+        // 注入的文案表里本来就有 site.footer_icp 这个键，先剥掉 <script> 再查
+        String noIcp = fetch(base + "/")
+                .replaceAll("(?s)<script>window\\.IMGUP_.*?</script>", "");
+        if (!noIcp.contains("foot-icp") && !noIcp.contains("备案号：")) {
+            ok++;
+            System.out.println("  [OK]   没配备案号时页脚没有多余的空行");
+        } else {
+            bad++;
+            System.out.println("  [!!]   没配备案号，页脚却出现了这一行");
+        }
+
         System.out.println("\n=== 页脚的插件信息行 ===");
         String home = fetch(base + "/");
         if (home.contains("PLUGIN TestPlugin 1.2.3")) {

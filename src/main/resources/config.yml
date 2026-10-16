@@ -79,6 +79,17 @@ web:
   # When off, /admin returns 404 and review is only possible in game with
   # /imgup list|ok|no.
   admin_enabled: true
+  # 备案号。留空 = 页脚不显示这一行。
+  # 中国大陆的服务器要求网站底部展示 ICP 备案号，填在这里，例如：
+  #   icp_license: "京ICP备12345678号-1"
+  # 填了之后页脚最底部会显示它，并链接到工信部备案查询页。
+  # ICP filing number. Leave empty to hide this line entirely.
+  # Sites hosted in mainland China are required to show their ICP filing
+  # number in the footer. Example:
+  #   icp_license: "京ICP备12345678号-1"
+  # When set, it is shown at the very bottom of the footer and linked to the
+  # official MIIT lookup page.
+  icp_license: ""
 
   # 网页后台的管理密码。留空则插件第一次启动时自动生成一个并写回这里，
   # 同时打印在服务端日志里（找不到就来这里看）。随时可以改成你自己的。

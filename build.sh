@@ -82,6 +82,7 @@ jar --create --file "$OUT_DIR/$JAR_NAME" -C "$OUT_DIR/classes" .
 
 echo "==> 校验产物"
 python3 - "$OUT_DIR/$JAR_NAME" <<'PY'
+import glob
 import re
 import sys
 import zipfile
@@ -192,6 +193,11 @@ with zipfile.ZipFile(jar) as zf:
     with zf.open("web/i18n.js") as fh:
         i18n_js = fh.read().decode("utf-8")
     used_site |= set(re.findall(r"'(site\.[A-Za-z0-9_]+)':", i18n_js))
+    # Java 源码里直接按名字取的键（比如备案号那行是插件拼出来的 HTML，
+    # 文案不在模板里），也算用到了。
+    for src in glob.glob("src/main/java/**/*.java", recursive=True):
+        with open(src, encoding="utf-8") as fh:
+            used_site |= set(re.findall(r'"(site\.[A-Za-z0-9_]+)"', fh.read()))
     used_site |= set(re.findall(r"t\('(site\.[A-Za-z0-9_]+)'", i18n_js))
     # JS 里动态设的属性翻译：setAttribute('data-i18n-attr', 'title:site.xxx')
     for spec in re.findall(r"setAttribute\('data-i18n-attr',\s*'([^']+)'", i18n_js):
@@ -261,7 +267,6 @@ with zipfile.ZipFile(jar) as zf:
 
     # 代码里引用的 game.* 键必须都在语言文件里定义了。
     # 打错一个字（game.confrim_ok）不会报错，但玩家聊天框里就会看到键名本身。
-    import glob
     used_game = set()
     for src in glob.glob("src/main/java/**/*.java", recursive=True):
         with open(src, encoding="utf-8") as fh:
