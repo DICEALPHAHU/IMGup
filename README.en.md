@@ -48,7 +48,7 @@ Some deliberate trade-offs:
 | --- | --- |
 | Server | Paper / Purpur, API `26.3.build.194-stable` (nearby versions usually work too) |
 | Java | 21 or newer |
-| Companion plugin | Images (CustomImages) — the plugin that actually puts images in game |
+| Companion plugin | [Images](https://github.com/Andavin/Images) (Custom Images) — the plugin that actually puts images in game; see "[Relationship with the Images plugin](#relationship-with-the-images-plugin)" |
 
 > Without the Images plugin the plugin still starts, but images go into its own
 > data directory, `/image create` cannot find them, and the log tells you so.
@@ -293,6 +293,34 @@ but missing from the index are registered back into it.
 
 **The site only listens on the port you configure.** With `web.enabled: false`
 no port is opened at all.
+
+---
+
+## Relationship with the Images plugin
+
+ImgUp does **not** put images into the game itself — that part is handled by
+[Images](https://github.com/Andavin/Images) (Custom Images, by
+[Andavin](https://github.com/Andavin)), and `/image create` is its command.
+ImgUp fills in the step before it: **letting players upload the image themselves.**
+
+Roughly:
+
+| | Responsibility |
+| --- | --- |
+| [Images](https://github.com/Andavin/Images) | Reads image files from the server directory and renders them onto maps |
+| ImgUp | Provides a web page for uploading, generates a compliant file name, and writes the image into the Images data directory |
+
+The two are meant to be used together: whatever ImgUp stores, `/image create`
+can use straight away.
+
+ImgUp does not copy any part of Images and never touches its config file. The
+only coupling is asking Bukkit for its data directory
+(`getPlugin("Images").getDataFolder()`) and putting image files there. That is
+also why upgrading Images or switching versions does not affect ImgUp.
+
+> Images is Andavin's own project; please report its issues in its repository
+> rather than here (and the other way round). Without it ImgUp still starts, but
+> images land in its own data directory.
 
 ---
 

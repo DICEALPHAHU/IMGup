@@ -39,7 +39,7 @@ ImgUp 把这一步变成：**打开网页 -> 选图 -> 上传 -> 进游戏敲一
 | --- | --- |
 | 服务端 | Paper / Purpur，API `26.3.build.194-stable`（其它相近版本一般也能用） |
 | Java | 21 或更高 |
-| 配套插件 | Images（CustomImages）—— 真正把图片贴进游戏的那个插件 |
+| 配套插件 | [Images](https://github.com/Andavin/Images)（Custom Images）—— 真正把图片贴进游戏的那个插件，见「[与 Images 插件的关系](#与-images-插件的关系)」 |
 
 > 没装 Images 插件时插件仍然能启动，只是图片会存到自己的数据目录，
 > 游戏里 `/image create` 找不到它们，日志里会给出提示。
@@ -262,6 +262,32 @@ bash test.sh
 而且启动时会把目录里「索引中没有」的文件补登记回来。
 
 **网站只监听你配置的端口。** `web.enabled: false` 时完全不开放任何端口。
+
+---
+
+## 与 Images 插件的关系
+
+ImgUp 自己**不会**把图片贴进游戏 —— 那一步是
+[Images](https://github.com/Andavin/Images)（Custom Images，作者
+[Andavin](https://github.com/Andavin)）在做，`/image create` 就是它的指令。
+ImgUp 补的是它前面缺的那一段：**让玩家自己能把图片传上来**。
+
+分工大致是：
+
+| | 负责什么 |
+| --- | --- |
+| [Images](https://github.com/Andavin/Images) | 读取服务端目录里的图片文件，把它渲染到地图上 |
+| ImgUp | 提供网页让玩家上传图片、自动生成合规的文件名，写进 Images 的数据目录 |
+
+两个插件是搭配使用的：ImgUp 存进去的图片，`/image create` 直接就能用。
+
+ImgUp 没有复制 Images 的任何实现，也不碰它的配置文件。唯一的耦合是通过
+Bukkit 拿到它的数据目录（`getPlugin("Images").getDataFolder()`），把图片放进去。
+这也是为什么 Images 升级、换版本都不影响 ImgUp。
+
+> Images 是 Andavin 的独立项目，有问题请去它的仓库反馈，不要算在
+> ImgUp 头上（反过来也一样）。没装它的时候 ImgUp 仍然能启动，
+> 只是图片会落到自己的数据目录里。
 
 ---
 
