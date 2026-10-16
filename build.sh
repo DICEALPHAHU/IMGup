@@ -96,6 +96,7 @@ with zipfile.ZipFile(jar) as zf:
                      "com/huhumc/imgup/UploadStore.class",
                      "com/huhumc/imgup/ImageTools.class",
                      "com/huhumc/imgup/Messages.class",
+                     "com/huhumc/imgup/ServerProperties.class",
                      # 网页资源必须打进去，否则插件起来了也没有页面
                      "web/index.html", "web/upload.html", "web/result.html",
                      "web/app.css", "web/i18n.js", "web/admin.html",

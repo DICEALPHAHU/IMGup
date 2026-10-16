@@ -1,8 +1,13 @@
 import com.huhumc.imgup.ImageTools;
+import com.huhumc.imgup.ServerProperties;
 import com.huhumc.imgup.Json;
 import com.huhumc.imgup.Multipart;
 import com.huhumc.imgup.Sessions;
 import com.huhumc.imgup.Texts;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
 
 import javax.imageio.ImageIO;
 import java.awt.Color;
@@ -48,6 +53,7 @@ public final class CoreSelfTest {
         testNotAnImageRejected();
         testNoUpscale();
         testSessionsConfirmFlow();
+        testServerProperties();
 
         System.out.println();
         System.out.println("通过 " + passed + " 项，失败 " + failed + " 项");
@@ -418,6 +424,48 @@ public final class CoreSelfTest {
     }
 
     // ------------------------------------------------------------ 会话
+
+    // ------------------------------------------- server.properties 解析
+
+    /**
+     * 页脚的 motd 和服务器名来自 server.properties。
+     *
+     * 踩过一次坑：serverName() 原本用 getServer().getName()，那个返回的是服务端
+     * 实现名（Purpur），页脚就印出了 "Copyright 2026 Purpur"。所以要解析真实的
+     * server.properties —— 这里用真实格式的文件测它。
+     */
+    private static void testServerProperties() throws Exception {
+        System.out.println("\n== 读 server.properties（页脚的 motd 和服务器名靠它） ==");
+        Path file = Files.createTempFile("server", ".properties");
+        try {
+            // 故意混入：注释、空行、行尾空格、值里带 =、Windows 换行
+            String content = "#Minecraft server properties\r\n"
+                    + "#Thu Oct 16 11:00:00 CST 2026\r\n"
+                    + "level-name=shencunshijie\r\n"
+                    + "motd=ALPHAHU Minecraft JAVA 26.1 Server   \r\n"
+                    + "server-name=alphahu Server\r\n"
+                    + "\r\n"
+                    + "resource-pack-prompt=点这里下载 = 资源包\r\n"
+                    + "  server-port=25565  \r\n";
+            Files.write(file, content.getBytes(StandardCharsets.UTF_8));
+
+            Map<String, String> props = ServerProperties.read(file);
+            checkEquals("读到了 motd", "ALPHAHU Minecraft JAVA 26.1 Server", props.get("motd"));
+            check("行尾空格被去掉", !String.valueOf(props.get("motd")).endsWith(" "));
+            checkEquals("读到了 server-name", "alphahu Server", props.get("server-name"));
+            checkEquals("值里可以带 =", "点这里下载 = 资源包", props.get("resource-pack-prompt"));
+            checkEquals("键前面有空格也认", "25565", props.get("server-port"));
+            check("注释和空行被跳过", !props.containsKey("#Minecraft server properties"));
+            checkEquals("level-name 正常", "shencunshijie", props.get("level-name"));
+        } finally {
+            Files.deleteIfExists(file);
+        }
+
+        // 文件不存在时不能抛异常，页脚留空即可
+        Map<String, String> missing = ServerProperties.read(
+                Path.of("/definitely/not/here/server.properties"));
+        check("文件不存在时返回空表而不是抛异常", missing.isEmpty());
+    }
 
     private static void testSessionsConfirmFlow() {
         System.out.println("\n== 会话与上传码 ==");

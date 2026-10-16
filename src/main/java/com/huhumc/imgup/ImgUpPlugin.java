@@ -7,6 +7,7 @@ import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.logging.Level;
@@ -217,19 +218,32 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
      */
     @Override
     public String serverMotd() {
-        try {
-            return getServer().getMotd();
-        } catch (RuntimeException e) {
-            return "";
-        }
+        // server.properties 里的 motd 是唯一来源，和页脚上写的一致
+        return serverProperty("motd");
     }
 
     @Override
     public String serverName() {
+        // 注意：不能用 getServer().getName() —— 那个返回的是服务端实现名
+        // （Purpur / CraftBukkit），不是站长在 server.properties 里设的 server-name。
+        return serverProperty("server-name");
+    }
+
+    /**
+     * 读 server.properties 里的一个键。
+     *
+     * 真正的解析在 {@link ServerProperties} 里（不依赖 Bukkit，可单独测试）。
+     */
+    private String serverProperty(String key) {
+        return ServerProperties.get(serverPropertiesFile(), key);
+    }
+
+    /** server.properties 在服务端根目录（世界容器的上一层）。 */
+    private Path serverPropertiesFile() {
         try {
-            return getServer().getName();
+            return getServer().getWorldContainer().toPath().resolve("server.properties");
         } catch (RuntimeException e) {
-            return "";
+            return null;
         }
     }
 
