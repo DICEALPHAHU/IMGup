@@ -89,7 +89,9 @@ public final class ConfigElementsTest {
                 .set("web.port", port)
                 .set("web.public_base_url", "http://127.0.0.1:" + port)
                 .set("language", "zh")
-                .set("messages_dir", "messages");
+                .set("messages_dir", "messages")
+                // 显式留空：验证「留空 -> 回退到 server.properties 的 server-name」
+                .set("web.site_name", "");
         WebConfig config = WebConfig.from(stub);
 
         Messages messages = new Messages(msgDir, config.language);
@@ -114,6 +116,10 @@ public final class ConfigElementsTest {
                     }
                 });
         server.setPluginInfo("TestPlugin", "1.2.3");
+        // 这里的配置没设 site_name，走的是 WebConfig 的默认值 CustomImagesUp；
+        // 所以显式留空一次，专门验证「留空 -> 回退到 server-name」这条路径。
+        // （下面那个 ConfigStub 是另一个：用来跑 /api/health 之类）
+        
         if (!server.start()) {
             System.out.println("服务器起不来");
             System.exit(1);

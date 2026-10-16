@@ -58,6 +58,7 @@ public final class CoreSelfTest {
         testServerProperties();
         testInlineCode();
         testIcpLicenseConfig();
+        testSiteNameConfig();
 
         System.out.println();
         System.out.println("通过 " + passed + " 项，失败 " + failed + " 项");
@@ -428,6 +429,30 @@ public final class CoreSelfTest {
     }
 
     // ------------------------------------------------------------ 会话
+
+    // ------------------------------------------- 站点名配置
+
+    /**
+     * 站点名默认必须是 CustomImagesUp —— 它是插件自带的品牌名，不是某个服务器的值。
+     * 服主想换招牌就改这一项；显式留空才回退到 server.properties 的 server-name。
+     */
+    private static void testSiteNameConfig() {
+        System.out.println("\n== 站点名配置 ==");
+
+        WebConfig 默认 = WebConfig.from(new ConfigStub());
+        checkEquals("不配时默认 CustomImagesUp", "CustomImagesUp", 默认.siteName);
+
+        WebConfig 留空 = WebConfig.from(new ConfigStub().set("web.site_name", "   "));
+        checkEquals("显式留空 -> 交给 WebServer 回退到 server-name", "", 留空.siteName);
+
+        WebConfig 改了 = WebConfig.from(new ConfigStub().set("web.site_name", "  我的服  "));
+        checkEquals("两侧空白去掉", "我的服", 改了.siteName);
+
+        String config = Resources.readText("config.yml");
+        check("config.yml 里默认值是 CustomImagesUp",
+                config != null && config.contains("site_name: \"CustomImagesUp\""),
+                "默认值不对");
+    }
 
     // ------------------------------------------- 备案号配置
 

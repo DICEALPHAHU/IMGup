@@ -90,14 +90,17 @@ web:
   # When set, it is shown at the very bottom of the footer and linked to the
   # official MIIT lookup page.
   icp_license: ""
-  # 站点名称。用于页头左上角的品牌名，以及浏览器标签页标题：
-  #     <页面名> · <站点名称><后缀>      例如：上传图片 · 我的服务器-图片上传站
-  # 留空 = 自动使用 server.properties 里的 server-name（和页脚「服务器：」显示的是同一个）。
-  # Site name, used for the header brand and the browser tab title:
-  #     <page> · <site name><suffix>     e.g. Upload · My Server-Image Upload
-  # Leave empty to use server-name from server.properties (the same value the
-  # footer shows next to "Server:").
-  site_name: ""
+  # 站点名称（页头左上角的品牌名 + 浏览器标签页标题都用它）：
+  #     <页面名> · <站点名称><后缀>      例如：上传图片 · CustomImagesUp-图片上传站
+  # 默认 CustomImagesUp，这里只是留个能改的位置，改成你自己的站点名即可。
+  # 显式留空 = 自动使用 server.properties 里的 server-name（和页脚「服务器：」
+  # 显示的是同一个值，改了 server-name 标题会跟着变）。
+  # Site name, shown as the header brand and used in the browser tab title:
+  #     <page> · <site name><suffix>     e.g. Upload · CustomImagesUp-Image Upload
+  # Defaults to CustomImagesUp; change it to whatever you like.
+  # If you explicitly leave it empty, server-name from server.properties is used
+  # instead (the same value the footer shows next to "Server:").
+  site_name: "CustomImagesUp"
 
   # 网页后台的管理密码。留空则插件第一次启动时自动生成一个并写回这里，
   # 同时打印在服务端日志里（找不到就来这里看）。随时可以改成你自己的。

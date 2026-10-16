@@ -133,8 +133,11 @@ public final class WebConfig {
     public final String icpLicense;
 
     /**
-     * 站点名称。留空表示「用 server.properties 里的 server-name」，
-     * 由 WebServer 在渲染时解析 —— 这样改了 server-name 标题会跟着变。
+     * 站点名称（页头品牌 + 标签页标题都用它）。默认 CustomImagesUp。
+     *
+     * 显式留空表示「用 server.properties 里的 server-name」—— 由 WebServer
+     * 在渲染时解析，所以改了 server-name 标题会跟着变。这样想用服务器名当招牌的
+     * 服主不用手写死一个名字。
      */
     public final String siteName;
 
@@ -169,7 +172,9 @@ public final class WebConfig {
         this.adminPassword = cfg.getString("web.admin_password", "").trim();
         this.adminEnabled = cfg.getBoolean("web.admin_enabled", true);
         this.icpLicense = cfg.getString("web.icp_license", "").trim();
-        this.siteName = cfg.getString("web.site_name", "").trim();
+        // 默认是站点品牌 CustomImagesUp —— 这只是给服主一个能改的位置，
+        // 不是「某个服务器的值当默认」（CustomImagesUp 是插件自带的品牌名）
+        this.siteName = cfg.getString("web.site_name", "CustomImagesUp").trim();
     }
 
     /** 从 Bukkit 配置构造（插件里用这个）。 */
