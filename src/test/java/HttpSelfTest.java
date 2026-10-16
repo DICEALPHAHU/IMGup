@@ -74,7 +74,8 @@ public final class HttpSelfTest {
                 .set("web.admin_enabled", true)
                 .set("web.admin_password", "TESTPW123456")
                 .set("web.icp_license", "京ICP备12345678号-1")
-                .set("web.request_timeout_seconds", 5);
+                .set("web.request_timeout_seconds", 5)
+                .set("limits.max_concurrent_uploads", 1);
         WebConfig config = WebConfig.from(stub);
 
         sessions = new Sessions(3600_000L, config.codeTtlMillis);
@@ -144,6 +145,7 @@ public final class HttpSelfTest {
             testFooterUsesInlineCode();
             testFooterPluginLine();
             testStalledBodyIsDropped();
+            testConcurrentUploadLimit();
             testIcpLicenseLine();
             testMessageFileUpgradeMerge();
         } finally {
@@ -539,6 +541,51 @@ public final class HttpSelfTest {
         // 注入的那张表里也应该是同样的 HTML，前端覆盖时才不会丢样式
         check("注入表里也是同样的 HTML",
                 get("/").text().contains("<code>images.command.create</code>"));
+    }
+
+    // ------------------------------------------ 上传并发上限
+
+    /**
+     * 同时只允许 limits.max_concurrent_uploads 个上传（这里配成 1）。
+     *
+     * 目的是别让挂住的上传把内存吃光：每个上传最多占「图片上限 + 1MB」的缓冲，
+     * 空闲超时虽然会踢掉它，但超时之前内存是实打实占着的。
+     */
+    private static void testConcurrentUploadLimit() throws Exception {
+        section("上传并发上限");
+
+        // 准备一个已验证的会话
+        Session client = new Session();
+        Reply code = client.postJson("/api/newcode", "{}");
+        String uploadCode = Json.string(Json.parseObject(code.text()), "code");
+        sessions.confirm(uploadCode, "Alex");
+
+        // 用原始 socket 占住唯一的名额：头声明有大请求体，但一个字节都不发
+        java.net.URI uri = java.net.URI.create(base);
+        try (java.net.Socket stalled = new java.net.Socket(uri.getHost(), uri.getPort())) {
+            stalled.setSoTimeout(30_000);
+            java.io.OutputStream out = stalled.getOutputStream();
+            out.write(("POST /api/upload HTTP/1.1\r\n"
+                    + "Host: " + uri.getHost() + "\r\n"
+                    + "Cookie: " + client.cookieHeader() + "\r\n"
+                    + "Content-Type: multipart/form-data; boundary=xx\r\n"
+                    + "Content-Length: 500000\r\n\r\n")
+                    .getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            out.flush();
+            // 等它确实占住名额
+            Thread.sleep(400);
+
+            Reply second = client.postImage("/api/upload", "第二张.png", png(200, 200), "第二张");
+            check("名额被占满时返回 503", second.status == 503,
+                    "拿到 " + second.status + " " + second.text());
+            check("提示是 busy", second.text().contains("busy"), "body=" + second.text());
+        }
+
+        // 名额释放后又能正常上传
+        Thread.sleep(300);
+        Reply after = client.postImage("/api/upload", "恢复后.png", png(200, 200), "恢复后");
+        check("名额释放后恢复正常", after.status == 200,
+                "拿到 " + after.status + " " + after.text());
     }
 
     // ------------------------------------------ 挂住的请求体

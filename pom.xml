@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>ImgUp</name>
-    <description>图片上传站的服务端一半：玩家用 /imgup &lt;上传码&gt; 完成网站与游戏的绑定；网站通过 RCON 调用 imgup add/poll/pending/info。</description>
+    <description>插件自带图片上传网站：玩家在网页上传图片，在游戏里用 /imgup 确认上传码、用地图贴出来。单个 jar，不需要 Docker / Python / RCON。</description>
 
     <properties>
         <!-- 服务端是 Purpur 26.3 / Java 25，插件按 Java 21 目标编译，兼容性更宽 -->

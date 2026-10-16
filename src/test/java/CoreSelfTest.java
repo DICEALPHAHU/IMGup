@@ -59,6 +59,7 @@ public final class CoreSelfTest {
         testInlineCode();
         testIcpLicenseConfig();
         testSiteNameConfig();
+        testConcurrencyConfig();
 
         System.out.println();
         System.out.println("通过 " + passed + " 项，失败 " + failed + " 项");
@@ -430,6 +431,23 @@ public final class CoreSelfTest {
 
     // ------------------------------------------------------------ 会话
 
+    // ------------------------------------------- 上传并发上限配置
+
+    private static void testConcurrencyConfig() {
+        System.out.println("\n== 上传并发上限配置 ==");
+
+        checkEquals("不配时默认 8", 8, WebConfig.from(new ConfigStub()).maxConcurrentUploads);
+        checkEquals("配 0 表示不限制", 0,
+                WebConfig.from(new ConfigStub()
+                        .set("limits.max_concurrent_uploads", 0)).maxConcurrentUploads);
+        checkEquals("负数也当作不限制", 0,
+                WebConfig.from(new ConfigStub()
+                        .set("limits.max_concurrent_uploads", -5)).maxConcurrentUploads);
+        checkEquals("配了就用配的值", 3,
+                WebConfig.from(new ConfigStub()
+                        .set("limits.max_concurrent_uploads", 3)).maxConcurrentUploads);
+    }
+
     // ------------------------------------------- 站点名配置
 
     /**
@@ -562,7 +580,7 @@ public final class CoreSelfTest {
                     + "#Thu Oct 16 11:00:00 CST 2026\r\n"
                     + "level-name=shencunshijie\r\n"
                     + "motd=ALPHAHU Minecraft JAVA 26.1 Server   \r\n"
-                    + "server-name=alphahu Server\r\n"
+                    + "server-name=Example Server\r\n"
                     + "\r\n"
                     + "resource-pack-prompt=点这里下载 = 资源包\r\n"
                     + "  server-port=25565  \r\n";
@@ -571,7 +589,7 @@ public final class CoreSelfTest {
             Map<String, String> props = ServerProperties.read(file);
             checkEquals("读到了 motd", "ALPHAHU Minecraft JAVA 26.1 Server", props.get("motd"));
             check("行尾空格被去掉", !String.valueOf(props.get("motd")).endsWith(" "));
-            checkEquals("读到了 server-name", "alphahu Server", props.get("server-name"));
+            checkEquals("读到了 server-name", "Example Server", props.get("server-name"));
             checkEquals("值里可以带 =", "点这里下载 = 资源包", props.get("resource-pack-prompt"));
             checkEquals("键前面有空格也认", "25565", props.get("server-port"));
             check("注释和空行被跳过", !props.containsKey("#Minecraft server properties"));

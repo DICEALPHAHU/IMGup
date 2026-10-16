@@ -141,6 +141,9 @@ public final class WebConfig {
      */
     public final String siteName;
 
+    /** 同时进行的上传上限，0 表示不限制。 */
+    public final int maxConcurrentUploads;
+
     private WebConfig(Source cfg) {
         this.enabled = cfg.getBoolean("web.enabled", true);
         this.host = cfg.getString("web.host", "0.0.0.0");
@@ -175,6 +178,7 @@ public final class WebConfig {
         // 默认是站点品牌 CustomImagesUp —— 这只是给服主一个能改的位置，
         // 不是「某个服务器的值当默认」（CustomImagesUp 是插件自带的品牌名）
         this.siteName = cfg.getString("web.site_name", "CustomImagesUp").trim();
+        this.maxConcurrentUploads = Math.max(0, cfg.getInt("limits.max_concurrent_uploads", 8));
     }
 
     /** 从 Bukkit 配置构造（插件里用这个）。 */

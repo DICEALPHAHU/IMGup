@@ -4,7 +4,7 @@ main: com.huhumc.imgup.ImgUpPlugin
 api-version: '1.21'
 authors: [ huhumc ]
 description: 图片上传站：插件自带网站，玩家在网页上传图片、在游戏里贴海报
-website: https://huhumc.top
+website: https://github.com/DICEALPHAHU/ImgUp
 commands:
   imgup:
     description: 确认上传码 / 查看和审核玩家上传的图片

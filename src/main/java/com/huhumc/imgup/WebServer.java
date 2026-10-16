@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -92,6 +93,13 @@ public final class WebServer {
      * 看门狗线程池。只用来「到点关掉挂住的连接」，一个守护单线程就够，
      * 而且每个请求只在超时点、2 倍超时点……各唤醒一次，开销可以忽略。
      */
+    /**
+     * 同时进行的上传上限。每个上传最多占 maxUploadBytes + 1MB 的缓冲，
+     * 虽然挂住的连接会被空闲超时踢掉，但超时之前仍然实打实占着内存 ——
+     * 用信号量把并发峰值压住。config 里配 0 表示不限制。
+     */
+    private final Semaphore uploadSlots;
+
     private static final ScheduledExecutorService WATCHDOG =
             Executors.newSingleThreadScheduledExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "ImgUp-Web-Watchdog");
@@ -133,6 +141,8 @@ public final class WebServer {
         this.sessions = sessions;
         this.messages = messages;
         this.game = game;
+        this.uploadSlots = config.maxConcurrentUploads > 0
+                ? new Semaphore(config.maxConcurrentUploads) : null;
     }
 
     public boolean isRunning() {
@@ -566,104 +576,117 @@ public final class WebServer {
         }
         String player = session.player;
 
-        String contentType = header(exchange, "Content-Type");
-        if (contentType == null || !contentType.toLowerCase(Locale.ROOT)
-                .startsWith("multipart/form-data")) {
-            return sendJson(exchange, 400, error("bad_request", 400,
-                    "上传必须用 multipart/form-data", null));
+        // 拿一个上传名额（拿不到说明同时上传的人太多了，直接让他稍后再来，
+        // 而不是先收下 6MB 再排队 —— 那样内存照样被占住）
+        if (uploadSlots != null && !uploadSlots.tryAcquire()) {
+            return sendJson(exchange, 503, error("busy", 503,
+                    "同时上传的人太多了，请稍后再试", null));
         }
-
-        byte[] raw;
         try {
-            raw = readBodyWithIdleTimeout(exchange,
-                    headerLong(exchange, "Content-Length", -1),
-                    config.maxUploadBytes + 1024 * 1024);
-        } catch (Multipart.TooLargeException e) {
-            return sendJson(exchange, 413, error("too_large", 413,
-                    "图片超过体积上限", Map.of("max", humanBytes(config.maxUploadBytes))));
-        }
 
-        Multipart.Result form;
-        try {
-            form = Multipart.parse(raw, contentType, config.maxUploadBytes,
-                    config.maxNicknameLength * 4);
-        } catch (Multipart.BadRequestException e) {
-            if ("file_too_large".equals(e.getMessage())) {
+            String contentType = header(exchange, "Content-Type");
+            if (contentType == null || !contentType.toLowerCase(Locale.ROOT)
+                    .startsWith("multipart/form-data")) {
+                return sendJson(exchange, 400, error("bad_request", 400,
+                        "上传必须用 multipart/form-data", null));
+            }
+
+            byte[] raw;
+            try {
+                raw = readBodyWithIdleTimeout(exchange,
+                        headerLong(exchange, "Content-Length", -1),
+                        config.maxUploadBytes + 1024 * 1024);
+            } catch (Multipart.TooLargeException e) {
                 return sendJson(exchange, 413, error("too_large", 413,
                         "图片超过体积上限", Map.of("max", humanBytes(config.maxUploadBytes))));
             }
-            return sendJson(exchange, 400, error("bad_request", 400, e.getMessage(), null));
-        }
 
-        Multipart.FilePart file = form.firstFile();
-        if (file == null || file.data().length == 0) {
-            return sendJson(exchange, 400, error("no_file", 400, "没有收到文件，请选择一张图片", null));
-        }
+            Multipart.Result form;
+            try {
+                form = Multipart.parse(raw, contentType, config.maxUploadBytes,
+                        config.maxNicknameLength * 4);
+            } catch (Multipart.BadRequestException e) {
+                if ("file_too_large".equals(e.getMessage())) {
+                    return sendJson(exchange, 413, error("too_large", 413,
+                            "图片超过体积上限", Map.of("max", humanBytes(config.maxUploadBytes))));
+                }
+                return sendJson(exchange, 400, error("bad_request", 400, e.getMessage(), null));
+            }
 
-        ImageTools.Processed processed;
-        try {
-            processed = ImageTools.process(file.data(), config.maxUploadBytes,
-                    config.maxDimension, config.maxPixels, config.jpegQuality);
-        } catch (ImageTools.ImageException e) {
-            return sendJson(exchange, 400, error(e.code(), 400, e.getMessage(), null));
-        }
+            Multipart.FilePart file = form.firstFile();
+            if (file == null || file.data().length == 0) {
+                return sendJson(exchange, 400, error("no_file", 400, "没有收到文件，请选择一张图片", null));
+            }
 
-        if (config.perPlayerDaily > 0 && store.uploadedToday(player) >= config.perPlayerDaily) {
-            return sendJson(exchange, 429, error("rate_limited", 429,
-                    "你今天上传的图片太多了，明天再来吧",
-                    Map.of("daily", config.perPlayerDaily)));
-        }
-        if (config.pendingMax > 0) {
-            Integer pending = store.counts().getOrDefault("pending", 0);
-            if (pending >= config.pendingMax) {
-                return sendJson(exchange, 503, error("queue_full", 503,
-                        "待审核的图片太多了，请等站长处理完再上传",
-                        Map.of("max", config.pendingMax)));
+            ImageTools.Processed processed;
+            try {
+                processed = ImageTools.process(file.data(), config.maxUploadBytes,
+                        config.maxDimension, config.maxPixels, config.jpegQuality);
+            } catch (ImageTools.ImageException e) {
+                return sendJson(exchange, 400, error(e.code(), 400, e.getMessage(), null));
+            }
+
+            if (config.perPlayerDaily > 0 && store.uploadedToday(player) >= config.perPlayerDaily) {
+                return sendJson(exchange, 429, error("rate_limited", 429,
+                        "你今天上传的图片太多了，明天再来吧",
+                        Map.of("daily", config.perPlayerDaily)));
+            }
+            if (config.pendingMax > 0) {
+                Integer pending = store.counts().getOrDefault("pending", 0);
+                if (pending >= config.pendingMax) {
+                    return sendJson(exchange, 503, error("queue_full", 503,
+                            "待审核的图片太多了，请等站长处理完再上传",
+                            Map.of("max", config.pendingMax)));
+                }
+            }
+
+            String nickname = form.field("nickname");
+            if (nickname.isEmpty()) {
+                nickname = form.field("desc");
+            }
+            if (nickname.isEmpty()) {
+                nickname = Texts.defaultNickname(file.fileName());
+            }
+
+            String fileName;
+            try {
+                fileName = store.makeFileName(player, nickname, processed.extension(),
+                        config.maxNameLength, config.maxNicknameLength, false);
+            } catch (UploadStore.NameConflictException e) {
+                return sendJson(exchange, 503, error("busy", 503, e.getMessage(), null));
+            }
+
+            UploadStore.Item item;
+            try {
+                item = store.store(fileName, player, Texts.sanitizeNickname(nickname,
+                        config.maxNicknameLength), processed.data(),
+                        processed.width(), processed.height(), config.autoPublish);
+            } catch (IOException e) {
+                log.log(Level.WARNING, "保存上传失败 " + fileName, e);
+                return sendJson(exchange, 500, error("storage_error", 500, "保存失败，请稍后重试", null));
+            }
+
+            // 通知传的是语言文件的键，插件那边按玩家客户端语言取文案
+            notifyPlayer(player, config.autoPublish
+                    ? "game.notify_uploaded" : "game.notify_uploaded_pending",
+                    "name", fileName);
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("ok", true);
+            body.put("name", item.name);
+            body.put("nickname", item.nickname);
+            body.put("status", item.status);
+            body.put("width", item.width);
+            body.put("height", item.height);
+            body.put("bytes", item.bytes);
+            body.put("url", UploadStore.STATUS_PUBLISHED.equals(item.status)
+                    ? config.uploadUrl(item.name) : "");
+            return sendJson(exchange, 200, body);
+        } finally {
+            if (uploadSlots != null) {
+                uploadSlots.release();
             }
         }
-
-        String nickname = form.field("nickname");
-        if (nickname.isEmpty()) {
-            nickname = form.field("desc");
-        }
-        if (nickname.isEmpty()) {
-            nickname = Texts.defaultNickname(file.fileName());
-        }
-
-        String fileName;
-        try {
-            fileName = store.makeFileName(player, nickname, processed.extension(),
-                    config.maxNameLength, config.maxNicknameLength, false);
-        } catch (UploadStore.NameConflictException e) {
-            return sendJson(exchange, 503, error("busy", 503, e.getMessage(), null));
-        }
-
-        UploadStore.Item item;
-        try {
-            item = store.store(fileName, player, Texts.sanitizeNickname(nickname,
-                    config.maxNicknameLength), processed.data(),
-                    processed.width(), processed.height(), config.autoPublish);
-        } catch (IOException e) {
-            log.log(Level.WARNING, "保存上传失败 " + fileName, e);
-            return sendJson(exchange, 500, error("storage_error", 500, "保存失败，请稍后重试", null));
-        }
-
-        // 通知传的是语言文件的键，插件那边按玩家客户端语言取文案
-        notifyPlayer(player, config.autoPublish
-                ? "game.notify_uploaded" : "game.notify_uploaded_pending",
-                "name", fileName);
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("ok", true);
-        body.put("name", item.name);
-        body.put("nickname", item.nickname);
-        body.put("status", item.status);
-        body.put("width", item.width);
-        body.put("height", item.height);
-        body.put("bytes", item.bytes);
-        body.put("url", UploadStore.STATUS_PUBLISHED.equals(item.status)
-                ? config.uploadUrl(item.name) : "");
-        return sendJson(exchange, 200, body);
     }
 
     private int apiRename(HttpExchange exchange) throws IOException {

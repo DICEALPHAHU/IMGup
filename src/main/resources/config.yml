@@ -187,6 +187,13 @@ limits:
   # 每个 IP 每小时能取多少次上传码，防止刷码。
   # How many upload codes one IP may request per hour, to stop code farming.
   newcode_per_ip_per_hour: 30
+  # 同时进行的上传上限。每个上传最多占「图片上限 + 1MB」的缓冲，这个值把并发峰值
+  # 压住，超出的请求直接返回「同时上传的人太多了」让玩家稍后再试。
+  # 0 = 不限制（小服一般用不到改；被刷的时候可以调小）。
+  # Max uploads processed at the same time. Each one buffers up to
+  # max_upload_bytes + 1MB; further requests get a "too many uploads" reply.
+  # 0 = unlimited.
+  max_concurrent_uploads: 8
 
 # 是否要求 imgup.use 权限才能用 /imgup 确认上传码。
 # false = 所有人可用；true = 需要在 LuckPerms 里发 imgup.use。
