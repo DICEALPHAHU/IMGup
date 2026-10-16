@@ -37,7 +37,7 @@ public final class ConfigElementsTest {
 
         // 语言文件：把每个元素都改成「CUSTOM-<键名>」形式，方便在页面里找
         List<String> elementKeys = List.of(
-                "site.brand", "site.nav_admin",
+                "site.nav_admin",
                 "site.home_heading", "site.home_lede", "site.home_first_step_title",
                 "site.home_button", "site.home_second_step_title",
                 "site.upload_heading", "site.upload_lede", "site.upload_button",
@@ -47,7 +47,8 @@ public final class ConfigElementsTest {
                 "site.result_rename_button",
                 // 这两个的值保留占位符，由 checkFooterServerInfo 单独验证，
                 // 所以不做 CUSTOM- 断言（见下面的 pageSpecific）
-                "site.footer_note", "site.footer_copyright", "site.footer_plugin");
+                "site.footer_note", "site.footer_copyright", "site.footer_plugin",
+                "site.title_suffix");
 
         List<String> pageSpecific = List.of(
                 "site.nav_admin", "site.nav_reverify", "site.nav_reupload",
@@ -67,6 +68,8 @@ public final class ConfigElementsTest {
                 value = "MOTD:{motd}";
             } else if (key.equals("site.footer_copyright")) {
                 value = "SERVER:{server}";
+            } else if (key.equals("site.title_suffix")) {
+                value = "-SUFFIX";
             } else if (key.equals("site.footer_plugin")) {
                 // 插件名和版本由插件在启动时告诉网站，保留占位符才能验证替换
                 value = "PLUGIN {name} {version}";
@@ -121,12 +124,12 @@ public final class ConfigElementsTest {
             // 每个页面应该渲染出来的元素 —— 声明式，多一个少一个都会报出来。
             // 顶栏链接和页脚权限句本来就是页面专属，所以各页不同是正常的。
             checkPage(base + "/", "首页", List.of(
-                    "site.brand", "site.nav_admin",
+                    "site.nav_admin",
                     "site.home_heading", "site.home_lede",
                     "site.home_first_step_title", "site.home_button",
                     "site.home_second_step_title"));
             checkPage(base + "/upload", "上传页", List.of(
-                    "site.brand", "site.nav_reverify",
+                    "site.nav_reverify",
                     "site.upload_heading", "site.upload_lede", "site.upload_button",
                     "site.upload_nickname_title", "site.upload_footer"));
             checkHeadings(base);
@@ -135,7 +138,7 @@ public final class ConfigElementsTest {
             checkEveryAssetResolves(base);
             checkHiddenAttributeWorks(base);
             checkPage(base + "/result", "结果页", List.of(
-                    "site.brand", "site.nav_reupload",
+                    "site.nav_reupload",
                     "site.result_heading", "site.result_rename_title",
                     "site.result_rename_button"));
         } finally {
@@ -265,6 +268,27 @@ public final class ConfigElementsTest {
         } else {
             bad++;
             System.out.println("  [!!]   这些引用取不到（页面会缺样式或脚本）：" + broken);
+        }
+
+        // 没配 web.site_name 时，站点名应该回退到 server.properties 的 server-name
+        System.out.println("\n=== 站点名回退 + 标签页标题拼装 ===");
+        String homeForSiteName = fetch(base + "/");
+        if (homeForSiteName.contains("class=\"brand-text\">Test Server<")) {
+            ok++;
+            System.out.println("  [OK]   没配 site_name 时品牌回退到 server-name（Test Server）");
+        } else {
+            bad++;
+            System.out.println("  [!!]   站点名没有回退到 server-name");
+        }
+        if (homeForSiteName.matches("(?s).*<title>获取上传码 · Test Server-SUFFIX</title>.*")) {
+            ok++;
+            System.out.println("  [OK]   标题是「页面名 · 站点名+后缀」");
+        } else {
+            java.util.regex.Matcher tm = java.util.regex.Pattern
+                    .compile("<title>(.*?)</title>").matcher(homeForSiteName);
+            bad++;
+            System.out.println("  [!!]   标题拼装不对，实际是「"
+                    + (tm.find() ? tm.group(1) : "没找到") + "」");
         }
 
         // 备案号是「隐形链接」：必须是链接、指向工信部，但视觉上不做成链接样子

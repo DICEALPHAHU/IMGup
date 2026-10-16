@@ -881,6 +881,21 @@ public final class WebServer {
      * 页脚的 $plugin_url 就渲染成了空的 href。模板变量缺失是**静默**的
      * （渲染成空字符串），所以两条路径必须共用同一份。
      */
+    /**
+     * 站点名称：config 里填了就用它，留空则用 server.properties 的 server-name，
+     * 再兜底用插件名。保证不会是空字符串（空了页头品牌就没了）。
+     */
+    private String siteName() {
+        if (config.siteName != null && !config.siteName.isBlank()) {
+            return config.siteName.trim();
+        }
+        String fromServer = serverName();
+        if (fromServer != null && !fromServer.isBlank()) {
+            return fromServer.trim();
+        }
+        return pluginName;
+    }
+
     private Map<String, String> pageValues(Sessions.Session session) {
         String player = session == null || session.player == null ? "" : session.player;
         boolean verified = session != null && session.verified();
@@ -894,6 +909,8 @@ public final class WebServer {
         values.put("plugin_name", Texts.escapeHtml(pluginName));
         values.put("plugin_version", Texts.escapeHtml(pluginVersion));
         values.put("plugin_url", Texts.escapeHtml(PLUGIN_URL));
+        // 品牌和标签页标题都用它
+        values.put("site_name", Texts.escapeHtml(siteName()));
         return values;
     }
 

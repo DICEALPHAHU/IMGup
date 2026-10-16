@@ -36,7 +36,7 @@
       /* ---- 这个语言自己的名字 ---- */
       'meta.name': '中文（简体）',
       /* ---- 网站元素（页面上显示给玩家的文字） ---- */
-      'site.brand': 'CustomImagesUp',
+      'site.title_suffix': '-图片上传站',
       'site.home_heading': '上传图片',
       'site.home_lede': '先在网页上获取一个 8 位上传码，再进游戏输入 `/imgup 你的上传码` 完成确认，就可以上传图片了。',
       'site.home_first_step_title': '第一步 · 获取上传码',
@@ -85,7 +85,7 @@
       'common.badCsrf': '页面令牌已失效（bad_csrf），请刷新页面后重试。',
       'common.sessionExpired': '会话已失效，请重新获取上传码。',
       /* ---- 首页 · 获取上传码 ---- */
-      'index.title': '获取上传码 · 图片上传站',
+      'index.title': '获取上传码',
       'index.getHint': '点下面的按钮生成上传码，然后在游戏聊天框里输入 `/imgup 上传码`。上传码 5 分钟内有效，网页会自动检测你的确认。',
       'index.newCode': '🔑 获取上传码',
       'index.newCodeAgain': '🔑 重新获取上传码',
@@ -116,7 +116,7 @@
       'index.badCodeLength': '上传码是 8 位字符，请检查后重试。',
       'index.claimFailed': '验证失败，请重新获取上传码。',
       /* ---- 上传页 ---- */
-      'upload.title': '上传图片 · 图片上传站',
+      'upload.title': '上传图片',
       'upload.chooseTitle': '选择图片',
       'upload.dropTitle': '点击选择图片',
       'upload.dropTitleChosen': '已选择图片，点击可更换',
@@ -147,7 +147,7 @@
       'upload.verifiedAs': '已通过验证：',
       'upload.previewAlt': '待上传图片预览',
       /* ---- 结果页 ---- */
-      'result.title': '上传成功 · 图片上传站',
+      'result.title': '上传成功',
       'result.statusDefault': '图片已处理完成。',
       'result.previewTitle': '图片预览',
       'result.uploader': '上传玩家：',
@@ -205,14 +205,14 @@
       'err.template_missing': '页面模板缺失，请联系站长。',
       'err.internal': '服务器内部错误，请稍后重试。',
       /* ---- 站长后台 ---- */
-      'admin.title': '站长后台 · 图片上传站',
+      'admin.title': '站长后台',
     },
 
     en: {
       /* ---- This language's own name ---- */
       'meta.name': 'English',
       /* ---- Site elements (text shown to players) ---- */
-      'site.brand': 'CustomImagesUp',
+      'site.title_suffix': '-Image Upload',
       'site.home_heading': 'Upload an image',
       'site.home_lede': 'Get an 8-character upload code here, then type `/imgup <your code>` in game to confirm. After that you can upload images.',
       'site.home_first_step_title': 'Step 1 · Get an upload code',
@@ -261,7 +261,7 @@
       'common.badCsrf': 'Your page token expired (bad_csrf). Please refresh and try again.',
       'common.sessionExpired': 'Your session expired. Please get a new upload code.',
       /* ---- Home · get an upload code ---- */
-      'index.title': 'Get upload code · Image Upload',
+      'index.title': 'Get upload code',
       'index.getHint': 'Click the button below to generate a code, then type `/imgup <code>` in the in-game chat. The code is valid for 5 minutes and this page detects your confirmation automatically.',
       'index.newCode': '🔑 Get upload code',
       'index.newCodeAgain': '🔑 Get a new code',
@@ -292,7 +292,7 @@
       'index.badCodeLength': 'An upload code is 8 characters long. Please check and try again.',
       'index.claimFailed': 'Verification failed. Please get a new upload code.',
       /* ---- Upload page ---- */
-      'upload.title': 'Upload an image · Image Upload',
+      'upload.title': 'Upload an image',
       'upload.chooseTitle': 'Choose an image',
       'upload.dropTitle': 'Click to choose an image',
       'upload.dropTitleChosen': 'Image selected — click to change',
@@ -323,7 +323,7 @@
       'upload.verifiedAs': 'Verified as:',
       'upload.previewAlt': 'Preview of the image to upload',
       /* ---- Result page ---- */
-      'result.title': 'Upload complete · Image Upload',
+      'result.title': 'Upload complete',
       'result.statusDefault': 'Your image has been processed.',
       'result.previewTitle': 'Preview',
       'result.uploader': 'Uploaded by:',
@@ -381,7 +381,7 @@
       'err.template_missing': 'A page template is missing. Please contact the admin.',
       'err.internal': 'Internal server error. Please try again later.',
       /* ---- Admin page ---- */
-      'admin.title': 'Admin · Image Upload',
+      'admin.title': 'Admin',
     },
   };
 

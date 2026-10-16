@@ -132,6 +132,12 @@ public final class WebConfig {
      */
     public final String icpLicense;
 
+    /**
+     * 站点名称。留空表示「用 server.properties 里的 server-name」，
+     * 由 WebServer 在渲染时解析 —— 这样改了 server-name 标题会跟着变。
+     */
+    public final String siteName;
+
     private WebConfig(Source cfg) {
         this.enabled = cfg.getBoolean("web.enabled", true);
         this.host = cfg.getString("web.host", "0.0.0.0");
@@ -163,6 +169,7 @@ public final class WebConfig {
         this.adminPassword = cfg.getString("web.admin_password", "").trim();
         this.adminEnabled = cfg.getBoolean("web.admin_enabled", true);
         this.icpLicense = cfg.getString("web.icp_license", "").trim();
+        this.siteName = cfg.getString("web.site_name", "").trim();
     }
 
     /** 从 Bukkit 配置构造（插件里用这个）。 */

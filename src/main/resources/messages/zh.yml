@@ -12,7 +12,7 @@
 meta.name: "中文（简体）"
 
 # ------------------------------------------------------------ 网站元素（页面上显示给玩家的文字） --
-site.brand: "CustomImagesUp"
+site.title_suffix: "-图片上传站"
 site.home_heading: "上传图片"
 site.home_lede: "先在网页上获取一个 8 位上传码，再进游戏输入 `/imgup 你的上传码` 完成确认，就可以上传图片了。"
 site.home_first_step_title: "第一步 · 获取上传码"
@@ -63,7 +63,7 @@ common.badCsrf: "页面令牌已失效（bad_csrf），请刷新页面后重试�
 common.sessionExpired: "会话已失效，请重新获取上传码。"
 
 # ------------------------------------------------------------ 首页 · 获取上传码 --
-index.title: "获取上传码 · 图片上传站"
+index.title: "获取上传码"
 index.getHint: "点下面的按钮生成上传码，然后在游戏聊天框里输入 `/imgup 上传码`。上传码 5 分钟内有效，网页会自动检测你的确认。"
 index.newCode: "🔑 获取上传码"
 index.newCodeAgain: "🔑 重新获取上传码"
@@ -95,7 +95,7 @@ index.badCodeLength: "上传码是 8 位字符，请检查后重试。"
 index.claimFailed: "验证失败，请重新获取上传码。"
 
 # ------------------------------------------------------------ 上传页 --
-upload.title: "上传图片 · 图片上传站"
+upload.title: "上传图片"
 upload.chooseTitle: "选择图片"
 upload.dropTitle: "点击选择图片"
 upload.dropTitleChosen: "已选择图片，点击可更换"
@@ -127,7 +127,7 @@ upload.verifiedAs: "已通过验证："
 upload.previewAlt: "待上传图片预览"
 
 # ------------------------------------------------------------ 结果页 --
-result.title: "上传成功 · 图片上传站"
+result.title: "上传成功"
 result.statusDefault: "图片已处理完成。"
 result.previewTitle: "图片预览"
 result.uploader: "上传玩家："
@@ -188,7 +188,7 @@ err.template_missing: "页面模板缺失，请联系站长。"
 err.internal: "服务器内部错误，请稍后重试。"
 
 # ------------------------------------------------------------ 站长后台 --
-admin.title: "站长后台 · 图片上传站"
+admin.title: "站长后台"
 
 # ---------------------------------------------------------------- 游戏内消息（玩家在聊天框里看到的） --
 # 按玩家客户端的语言自动选：客户端是中文就显示中文，英文就显示英文，

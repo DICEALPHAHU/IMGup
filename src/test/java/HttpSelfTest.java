@@ -70,8 +70,7 @@ public final class HttpSelfTest {
                 .set("web.auto_publish", true)
                 .set("upload.max_upload_bytes", 5 * 1024 * 1024)
                 .set("upload.max_nickname_length", 32)
-                .set("site.brand", "图片上传站")
-                .set("site.brand_en", "Image Upload")
+                .set("web.site_name", "测试站名")
                 .set("web.admin_enabled", true)
                 .set("web.admin_password", "TESTPW123456")
                 .set("web.icp_license", "京ICP备12345678号-1");
@@ -217,7 +216,7 @@ public final class HttpSelfTest {
                 js.text().contains("var DICT = {")
                         && js.text().contains("zh: {")
                         && js.text().contains("en: {")
-                        && js.text().contains("'site.brand': 'CustomImagesUp'"),
+                        && js.text().contains("'site.title_suffix': '-图片上传站'"),
                 "兜底字典结构不对");
         Reply missing = get("/static/nope.js");
         check("不存在的资源 404", missing.status == 404, "拿到 " + missing.status);
@@ -382,13 +381,15 @@ public final class HttpSelfTest {
     private static void testSiteElementsFromLanguageFile() throws Exception {
         section("页面文案来自 messages/<语言>.yml");
         Reply home = get("/");
-        check("默认语言渲染出中文站名", home.text().contains("图片上传站"));
+        check("页头品牌用的是 config 里的站点名",
+                home.text().contains("class=\"brand-text\">测试站名<"),
+                "品牌没渲染出站点名");
         check("注入了整张文案表", home.text().contains("IMGUP_MESSAGES"));
         check("注入了当前语言", home.text().contains("IMGUP_LANG"));
-        check("表里有 site.brand", home.text().contains("site.brand"));
         Reply english = get("/?lang=en");
-        check("?lang=en 渲染出英文站名", english.text().contains("Image Upload"),
-                "页面里没找到英文站名");
+        check("?lang=en 时站点名不变（站点名不该被翻译）",
+                english.text().contains("class=\"brand-text\">测试站名<"),
+                "英文页面的品牌变了");
         check("英文页面 html lang 正确", english.text().contains("lang=\"en\"")
                 || english.text().contains("IMGUP_LANG=\"en\""));
     }
@@ -614,7 +615,7 @@ public final class HttpSelfTest {
                     "# 站长自己的语言文件",
                     "meta.name: \"中文（简体）\"",
                     "meta.code: \"zh\"",
-                    "site.brand: \"我的服务器站名\"",     // 站长改过的值
+                    "site.title_suffix: \"-我的站\"",      // 站长改过的值
                     "game.confirm_ok: \"改过的确认文案\"",  // 站长改过的值
                     "") + "\n", java.nio.charset.StandardCharsets.UTF_8);
 
@@ -630,9 +631,9 @@ public final class HttpSelfTest {
             check("新键 game.notify_approved 已补上", after.contains("game.notify_approved:"));
 
             // 关键：站长改过的值不能被覆盖
-            check("站长改过的站名没被覆盖",
-                    after.contains("site.brand: \"我的服务器站名\""),
-                    "site.brand 被冲掉了");
+            check("站长改过的后缀没被覆盖",
+                    after.contains("site.title_suffix: \"-我的站\""),
+                    "site.title_suffix 被冲掉了");
             check("站长改过的确认文案没被覆盖",
                     after.contains("game.confirm_ok: \"改过的确认文案\""),
                     "game.confirm_ok 被冲掉了");
@@ -641,7 +642,7 @@ public final class HttpSelfTest {
             m.load(java.util.logging.Logger.getLogger("merge-test"));
             checkEquals("加载后不再返回键名", false,
                     "game.usage_header".equals(m.get("zh", "game.usage_header")));
-            checkEquals("站长改的值生效", "我的服务器站名", m.get("zh", "site.brand"));
+            checkEquals("站长改的值生效", "-我的站", m.get("zh", "site.title_suffix"));
 
             // 幂等：再合并一次不该重复追加
             int again = m.mergeDefaults(java.util.logging.Logger.getLogger("merge-test"),

@@ -158,16 +158,26 @@ with zipfile.ZipFile(jar) as zf:
             sys.exit(name + " 里还有中文（漏译）：" + "; ".join(leaked[:5]))
     print("    非中文语言文件里没有漏译的中文")
 
-    # 模板里的 $site_xxx 占位符必须都能在语言文件里找到
+    # 模板里的 $msg_<键名> 必须都能在语言文件里找到（键名里的点写成下划线）。
+    # 找不到的话服务端会把它渲染成**空字符串** —— 页面上少一块，而且不报错，
+    # 光看页面很难发现。所以这里是「模板用了但没声明」的兜底检查。
+    #
+    # （原来这里查的是 $site_xxx —— 那是早期约定的残留，改成统一 $msg_ 之后
+    #   就再也没匹配到过任何东西，等于失效了。）
+    def form_of(key):
+        return key.replace(".", "_")
+
+    by_form = {form_of(k): k for k in tables["zh"]}
     missing = []
     for page in ("index", "upload", "result", "admin"):
         with zf.open("web/" + page + ".html") as fh:
             html = fh.read().decode("utf-8")
-        for var in sorted(set(re.findall(r"\$site_([a-z_]+)", html))):
-            if "site." + var not in tables["zh"]:
-                missing.append(page + ".html 的 $site_" + var + " 没有对应的 site." + var)
+        for var in sorted(set(re.findall(r"\$msg_([a-zA-Z0-9_]+)", html))):
+            if var not in by_form:
+                missing.append(page + ".html 的 $msg_" + var + " 没有对应的键")
     if missing:
-        sys.exit("模板占位符在语言文件里找不到：" + "; ".join(missing[:5]))
+        sys.exit("模板占位符在语言文件里找不到（会渲染成空白）：" + "; ".join(missing[:5]))
+    print("    模板里的 $msg_ 占位符都能在语言文件里找到")
 
     all_keys = set(tables["zh"])
 
