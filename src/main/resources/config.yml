@@ -135,6 +135,12 @@ language: zh
 # then shows up automatically in the language menu at the top right of the site.
 messages_dir: "messages"
 
+# 允许玩家给「待审核」的图片改名。已经发布的图不能改 —— 改了名游戏里就找不到了。
+# Allow players to rename their own pending uploads. Published images cannot be
+# renamed, because the name is what /image create looks up.
+site:
+  allow_rename: true
+
 # ---------------------------------------------------------------------------
 # 图片处理 / Image processing
 # ---------------------------------------------------------------------------

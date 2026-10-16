@@ -1271,9 +1271,6 @@ public final class WebServer {
             // 都能像 $msg_upload_nicknamePlaceholder 这样直接写进页面。
             values.put("msg_" + key.replace('.', '_'), value);
         }
-        values.put("msg_site_show_manual_claim", config.showManualClaim ? "1" : "");
-        values.put("msg_site_allow_rename", config.allowRename ? "1" : "");
-        values.put("msg_site_show_copy_buttons", config.showCopyButtons ? "1" : "");
         values.put("messages_json", jsonOf(substituted));
 
         String output = render(html, values);

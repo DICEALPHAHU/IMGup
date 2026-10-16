@@ -325,6 +325,42 @@ with zipfile.ZipFile(jar) as zf:
         sys.exit("这些配置项写在 config.yml 里但 Java 从没读过（改了不会生效）：" + str(dead_cfg))
     print("    config.yml 的 " + str(len(cfg_keys)) + " 个配置项都被读取了，没有死配置")
 
+    # 反过来也要查：代码读取的键必须在 config.yml 里声明过。
+    # 否则站长根本不知道有这一项 —— site.show_manual_claim 和
+    # site.show_copy_buttons 就是这么存在了很久：读是读了，但没有任何模板
+    # 引用它们，改了完全没效果。
+    with open("src/main/java/com/github/dicealphahu/imgup/WebConfig.java",
+              encoding="utf-8") as fh:
+        read_keys = set(re.findall(r'cfg\.get[A-Za-z]*\("([^"]+)"', fh.read()))
+    undeclared = sorted(read_keys - set(cfg_keys))
+    if undeclared:
+        sys.exit("这些配置键代码会读，但 config.yml 里没有声明，站长无从得知："
+                 + ", ".join(undeclared))
+    print("    代码读取的 " + str(len(read_keys)) + " 个键都在 config.yml 里有声明")
+
+    # README 里写的配置键必须真实存在，默认值也要对得上。
+    # 文档漂移过：README 说 web.public_base_url 留空会「按请求自动推断」，
+    # 实际是拿 web.host 拼、监听 0.0.0.0 时给出 127.0.0.1；还说改端口要重启，
+    # 而 /imgup reload 其实会重启网站。
+    for readme, is_english in (("README.md", False), ("README.en.md", True)):
+        with open(readme, encoding="utf-8") as fh:
+            doc = fh.read()
+        missing_keys = sorted({
+            k for k in re.findall(r"`((?:web|upload|limits|site)\.[a-z_]+)`", doc)
+            if k not in set(cfg_keys)
+        })
+        if missing_keys:
+            sys.exit(readme + " 提到了 config.yml 里不存在的配置键："
+                     + ", ".join(missing_keys))
+        if is_english:
+            # 英文 README 里除了语言切换那一行，不该出现中文
+            stray = [line for line in doc.split("\n")
+                     if re.search(r"[\u4e00-\u9fff]", line)
+                     and not line.startswith("Chinese")]
+            if stray:
+                sys.exit("README.en.md 里有没翻译的中文：" + stray[0][:60])
+    print("    两份 README 提到的配置键都存在，英文版没有漏译")
+
 
     # 版本号只能有一个来源（plugin.yml）。WebServer 里若写死版本号，
     # /api/health 报出来的就和插件实际版本对不上 —— 这种漂移直接拦掉。

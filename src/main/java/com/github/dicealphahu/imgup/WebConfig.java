@@ -114,11 +114,9 @@ public final class WebConfig {
     public final String messagesDir;
 
     /** 关掉后首页不显示「手动输入上传码」那一块。 */
-    public final boolean showManualClaim;
     /** 关掉后结果页不显示改名区块。 */
     public final boolean allowRename;
     /** 关掉后不显示复制文件名 / 复制指令按钮。 */
-    public final boolean showCopyButtons;
 
     /** 网页后台的管理密码。空字符串 = 后台不可用（登录一律失败）。 */
     public final String adminPassword;
@@ -172,9 +170,7 @@ public final class WebConfig {
 
         this.language = normalizeLang(cfg.getString("language", "zh"));
         this.messagesDir = cfg.getString("messages_dir", "messages");
-        this.showManualClaim = cfg.getBoolean("site.show_manual_claim", true);
         this.allowRename = cfg.getBoolean("site.allow_rename", true);
-        this.showCopyButtons = cfg.getBoolean("site.show_copy_buttons", true);
         this.adminPassword = cfg.getString("web.admin_password", "").trim();
         this.adminEnabled = cfg.getBoolean("web.admin_enabled", true);
         this.icpLicense = cfg.getString("web.icp_license", "").trim();
