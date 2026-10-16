@@ -584,6 +584,13 @@ public final class HttpSelfTest {
             check(page + " 备案号链到工信部查询页",
                     html.contains("href=\"https://beian.miit.gov.cn/\""),
                     "备案号没有链接");
+            // 整串（含「备案号：」和号码）都要在 <a> 里，点哪儿都能开
+            check(page + " 整串备案号都在链接里",
+                    html.matches("(?s).*<p class=\"foot-icp\"><a [^>]*>备案号：京ICP备12345678号-1</a></p>.*"),
+                    "链接没有包住整串备案号");
+            check(page + " 备案号链接新窗口打开且带 rel",
+                    html.matches("(?s).*<p class=\"foot-icp\"><a [^>]*target=\"_blank\"[^>]*rel=\"noopener noreferrer\".*"),
+                    "备案号外链属性不完整");
             check(page + " 备案号在页脚最底部（在插件信息行之后）",
                     html.indexOf("京ICP备12345678号-1") > html.indexOf("ImgUp 9.9.9-test"),
                     "备案号没有排在插件信息行下面");

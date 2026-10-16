@@ -267,6 +267,27 @@ public final class ConfigElementsTest {
             System.out.println("  [!!]   这些引用取不到（页面会缺样式或脚本）：" + broken);
         }
 
+        // 备案号是「隐形链接」：必须是链接、指向工信部，但视觉上不做成链接样子
+        System.out.println("\n=== 备案号必须是能点开的隐形链接 ===");
+        String css = fetch(base + "/static/app.css");
+        boolean noUnderline = css.matches("(?s).*\\.foot-icp a[^{]*\\{[^}]*text-decoration:\\s*none.*");
+        boolean inherits = css.matches("(?s).*\\.foot-icp a[^{]*\\{[^}]*color:\\s*inherit.*");
+        if (noUnderline && inherits) {
+            ok++;
+            System.out.println("  [OK]   备案号链接的样式是隐形的（同色、无下划线）");
+        } else {
+            bad++;
+            System.out.println("  [!!]   备案号链接样式不是隐形的（无下划线=" + noUnderline
+                    + "，同色=" + inherits + "）");
+        }
+        if (css.contains(".foot-icp a:focus-visible")) {
+            ok++;
+            System.out.println("  [OK]   键盘焦点有可见轮廓（隐形不影响可用性）");
+        } else {
+            bad++;
+            System.out.println("  [!!]   隐形链接缺焦点样式，键盘用户会迷失");
+        }
+
         // serverText 必须判断「解析结果是不是还等于键名」。
         // 服务端下发的键如果语言文件里没声明，t() 会把键名原样返回 ——
         // 曾经因此把 err.not_confirmed 直接显示给玩家。

@@ -813,8 +813,22 @@ main.wrap { padding-bottom: 36px; }
   opacity: .72;
   text-align: center;
 }
-.foot-icp a {
-  color: var(--muted);
+/* 备案号的「隐形链接」：
+   国内要求网站底部展示备案号、并且必须能点开到工信部备案查询页。
+   所以链接一定要有，但按惯例不做成蓝色/下划线的链接样子 ——
+   整串文字看起来就是普通页脚文字，点上去才发现能打开。
+   覆盖全局的 a:hover { text-decoration: underline }。 */
+.foot-icp a,
+.foot-icp a:visited,
+.foot-icp a:hover,
+.foot-icp a:active {
+  color: inherit;
+  text-decoration: none;
   word-break: break-all;
 }
-.foot-icp a:hover { color: var(--text); }
+/* 键盘 Tab 到它时给个清晰的焦点圈：鼠标用户看不到，不影响「隐形」，
+   但用键盘的人能知道焦点在哪（纯视觉隐形会让键盘用户迷失）。 */
+.foot-icp a:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
