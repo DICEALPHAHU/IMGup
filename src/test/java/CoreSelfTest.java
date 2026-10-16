@@ -498,12 +498,25 @@ public final class CoreSelfTest {
         checkEquals("聊天里去掉反引号", "需要 /image create 权限",
                 Texts.stripBackticks("需要 `/image create` 权限"));
 
-        // 页脚那两句的真实写法
+        // 页脚那句的真实写法（权限那里写的是权限节点，不是命令）
         checkEquals("页脚写法转出来是对的",
-                "读取服务器 <code>MOTD值</code>，"
-                        + "游戏内贴海报需要 <code>/image create</code> 权限，没有权限请找管理员。",
+                "服务器：<code>MOTD值</code>，游戏内贴海报需要 "
+                        + "<code>images.command.create</code> 权限，没有权限请找管理员。",
                 Texts.inlineHtml(
-                        "读取服务器 `MOTD值`，游戏内贴海报需要 `/image create` 权限，没有权限请找管理员。"));
+                        "服务器：`MOTD值`，游戏内贴海报需要 "
+                                + "`images.command.create` 权限，没有权限请找管理员。"));
+
+        // 语言文件里不能再把命令当权限写
+        String zh = Resources.readText("messages/zh.yml");
+        String en = Resources.readText("messages/en.yml");
+        check("zh 页脚不再写「读取服务器」", zh != null && !zh.contains("读取服务器"),
+                "还有「读取服务器」");
+        check("zh/en 的页脚权限写的是权限节点",
+                zh != null && en != null
+                        && zh.contains("site.footer_note: \"服务器：`{motd}`")
+                        && zh.contains("`images.command.create` 权限")
+                        && en.contains("`images.command.create` permission"),
+                "页脚权限文案不对");
     }
 
     // ------------------------------------------- server.properties 解析

@@ -510,17 +510,26 @@ public final class HttpSelfTest {
         check("motd 被包在 <code> 里",
                 html.contains("<code>Example MOTD</code>"),
                 "页脚里没找到 <code>Example MOTD</code>");
-        check("/image create 被包在 <code> 里",
-                html.contains("<code>/image create</code>"),
-                "页脚里没找到 <code>/image create</code>");
+        check("权限节点被包在 <code> 里",
+                html.contains("<code>images.command.create</code>"),
+                "页脚里没找到 <code>images.command.create</code>");
+        // 权限那里必须是权限节点，写成命令会让玩家照着敲然后提示没权限
+        check("页脚不再把命令当权限写",
+                !html.contains("/image create</code> 权限")
+                        && !html.contains("/image create permission"),
+                "页脚还在把 /image create 当权限");
+        check("页脚用的是「服务器：」而不是「读取服务器」",
+                html.contains("服务器：<code>Example MOTD</code>")
+                        && !html.contains("读取服务器"),
+                "页脚文案不对");
         check("反引号没有留在页面上", !html.contains("`"),
                 "页面上还露着反引号");
         check("没有把标签转义成文本", !html.contains("&lt;code&gt;"),
                 "code 标签被当成文本显示了");
 
         // 注入的那张表里也应该是同样的 HTML，前端覆盖时才不会丢样式
-        String table = html.contains("<code>/image create</code>") ? "ok" : "";
-        check("服务端渲染与注入表一致", !table.isEmpty());
+        check("注入表里也是同样的 HTML",
+                get("/").text().contains("<code>images.command.create</code>"));
     }
 
     // ------------------------------------------ 页脚的插件信息行

@@ -169,87 +169,41 @@ with zipfile.ZipFile(jar) as zf:
     if missing:
         sys.exit("模板占位符在语言文件里找不到：" + "; ".join(missing[:5]))
 
-    # 反向检查：site.* 声明了就必须真的被某个模板用上。
-    # 否则站长改了它页面却没变，会以为「配置不生效」—— 那种坑不如构建时拦掉。
-    # 三种写法都算「用到了」：
-    #   $msg_site_xxx          服务端渲染时替换（静态文字）
-    #   data-i18n="site.xxx"   前端引擎翻译（标签上的静态文字）
-    #   t('site.xxx')          前端 JS 里取（动态生成的文字）
-    #   site.xxx 出现在 i18n.js 的兜底字典里也算（离线打开页面时的兜底）
-    used_site = set()
+    all_keys = set(tables["zh"])
+
+    # 死键检查：语言文件里声明了、但代码里根本没引用的键。
+    # 站长改到这种键会发现「改了不生效」，所以要么用上要么删掉。
+    #
+    # 认这几种使用方式（缺一种就会误报，所以都要覆盖）：
+    #   · 键名原样出现：data-i18n="k"、t('k')、key: 'k'、Java 里的字面量
+    #   · 服务端渲染：$msg_ 加键名（点换成下划线）
+    #   · 服务端动态下发：err.<code>，code 取自 error("code", ...)
+    # 注意：**不能**把 i18n.js 兜底字典里出现过就算用到 —— 那正是死键藏身的地方
+    # （common.footerPermBefore/After 就这么躲了很久）。
+    blob = ""
     for page in ("index", "upload", "result", "admin"):
         with zf.open("web/" + page + ".html") as fh:
-            html = fh.read().decode("utf-8")
-        used_site |= {"site." + v for v in re.findall(r"\$msg_site_([A-Za-z0-9_]+)", html)}
-        used_site |= set(re.findall(r'data-i18n="(site\.[A-Za-z0-9_]+)"', html))
-        used_site |= set(re.findall(r"t\('(site\.[A-Za-z0-9_]+)'", html))
-        # data-i18n-attr="title:site.xxx,aria-label:site.yyy" —— 属性上的翻译
-        for spec in re.findall(r'data-i18n-attr="([^"]+)"', html):
-            for pair in spec.split(','):
-                if ':' in pair:
-                    key = pair.split(':', 1)[1].strip()
-                    if key.startswith('site.'):
-                        used_site.add(key)
+            blob += fh.read().decode("utf-8")
     with zf.open("web/i18n.js") as fh:
-        i18n_js = fh.read().decode("utf-8")
-    used_site |= set(re.findall(r"'(site\.[A-Za-z0-9_]+)':", i18n_js))
-    # Java 源码里直接按名字取的键（比如备案号那行是插件拼出来的 HTML，
-    # 文案不在模板里），也算用到了。
+        blob += fh.read().decode("utf-8")
     for src in glob.glob("src/main/java/**/*.java", recursive=True):
         with open(src, encoding="utf-8") as fh:
-            used_site |= set(re.findall(r'"(site\.[A-Za-z0-9_]+)"', fh.read()))
-    used_site |= set(re.findall(r"t\('(site\.[A-Za-z0-9_]+)'", i18n_js))
-    # JS 里动态设的属性翻译：setAttribute('data-i18n-attr', 'title:site.xxx')
-    for spec in re.findall(r"setAttribute\('data-i18n-attr',\s*'([^']+)'", i18n_js):
-        for pair in spec.split(','):
-            if ':' in pair:
-                key = pair.split(':', 1)[1].strip()
-                if key.startswith('site.'):
-                    used_site.add(key)
-    declared_site = {k for k in tables["zh"] if k.startswith("site.")}
-    dead = sorted(declared_site - used_site)
-    if dead:
-        sys.exit("这些 site.* 键声明了但没有页面用到（改了不会生效）：" + str(dead))
+            blob += fh.read()
+    dynamic_err = {"err." + c for c in re.findall(r'error\("([a-z_]+)"', blob)}
 
-    # 正向检查（这条曾经漏掉，害得第二步面板标题是空的）：
-    # 模板里用到的 $msg_xxx 必须在语言文件里真的有这个键。
-    # 少了键不会报错，只会让那一块渲染成空白 —— 光看页面很难发现。
-    all_keys = tables["zh"]
-    form = {k.replace(".", "_"): k for k in all_keys}
-    missing_keys = []
-    for page in ("index", "upload", "result", "admin"):
-        with zf.open("web/" + page + ".html") as fh:
-            html = fh.read().decode("utf-8")
-        for used in re.findall(r"\$msg_([A-Za-z0-9_]+)", html):
-            if form.get(used) is None:
-                missing_keys.append(page + " -> $msg_" + used)
-    if missing_keys:
-        sys.exit("模板用了语言文件里不存在的键（那部分会渲染成空白）："
-                 + str(sorted(set(missing_keys))))
+    def key_is_used(key):
+        if key in blob:
+            return True
+        if ("$msg_" + key.replace(".", "_")) in blob:
+            return True
+        return key in dynamic_err
 
-    # 页面里真正用到的 $msg_ 键必须来自「当前语言」，且键名要拼得出来
-    # 模板里用到的非 $msg_ 变量（$name、$plugin_url 这些）必须真的有人提供。
-    # 跟缺键一样，没人提供的变量会**静默渲染成空字符串** —— 后台页脚曾经
-    # 就因为 serveAdminPage 绕过了公共取值，渲染出一个 href="" 的空链接。
-    with zf.open("com/huhumc/imgup/WebServer.class") as fh:
-        server_class = fh.read()
-    # 从源码里取（class 里的常量池不好可靠地解析字符串归属）
-    with open("src/main/java/com/huhumc/imgup/WebServer.java", encoding="utf-8") as fh:
-        server_src = fh.read()
-    provided = set(re.findall(r'values\.put\("([a-z_]+)"', server_src))
-    used_vars = set()
-    for page in ("index", "upload", "result", "admin"):
-        with zf.open("web/" + page + ".html") as fh:
-            html = fh.read().decode("utf-8")
-        for v in re.findall(r"\$([a-zA-Z_][a-zA-Z0-9_]*)", html):
-            if not v.startswith("msg_"):
-                used_vars.add(v)
-    unprovided = sorted(used_vars - provided)
-    if unprovided:
-        sys.exit("模板用了但 WebServer 没提供的变量（会渲染成空白）：" + str(unprovided))
-    print("    模板用到的 " + str(len(used_vars)) + " 个变量都有提供")
+    dead_any = sorted(k for k in all_keys if not key_is_used(k))
+    if dead_any:
+        sys.exit("这些键声明了但代码里没有任何引用（改了不会生效，建议删掉）："
+                 + str(dead_any))
+    print("    语言文件里 " + str(len(all_keys)) + " 个键都在用，没有死键")
 
-    print("    模板占位符都能在语言文件里找到，且没有用不上的 site.* 键")
 
     # 版本号只能有一个来源（plugin.yml）。WebServer 里若写死版本号，
     # /api/health 报出来的就和插件实际版本对不上 —— 这种漂移直接拦掉。

@@ -10,7 +10,6 @@
 # ---------------------------------------------------------------- 这个语言自己的名字 --
 # meta.name 会显示在网页右上角的语言开关上（写这门语言自己的叫法）。
 meta.name: "中文（简体）"
-meta.code: "zh"
 
 # ------------------------------------------------------------ 网站元素（页面上显示给玩家的文字） --
 site.brand: "CustomImages"
@@ -26,7 +25,7 @@ site.upload_nickname_title: "图片昵称"
 site.result_heading: "上传完成"
 site.result_rename_title: "不满意这个名字？现在还能改"
 site.result_rename_button: "保存新名字"
-site.footer_note: "读取服务器 `{motd}`，游戏内贴海报需要 `/image create` 权限，没有权限请找管理员。"
+site.footer_note: "服务器：`{motd}`，游戏内贴海报需要 `images.command.create` 权限，没有权限请找管理员。"
 site.footer_plugin: "本插件 {name} {version} · 开源地址"
 site.footer_icp: "备案号：{number}"
 site.upload_footer: "上传成功后请复制游戏内指令 /image create 文件名，手持地图按提示右键放置。"
@@ -58,8 +57,6 @@ common.adminEntry: "站长入口"
 common.backHome: "🏠 返回首页"
 common.uploadAnother: "⬆️ 再传一张"
 common.footerTagline: "图片上传站 · 深色 Minecraft 风格 · 纯静态页面，不加载任何外部资源。"
-common.footerPermBefore: "游戏内贴海报需要 "
-common.footerPermAfter: "$site_footer_permission_suffix"
 common.langSwitchTitle: "切换语言"
 common.copy: "📋 复制"
 common.copied: "✅ 已复制"

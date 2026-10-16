@@ -9,7 +9,6 @@
 # ---------------------------------------------------------------- This language's own name --
 # meta.name is shown on the language switcher (write the name in this language itself).
 meta.name: "English"
-meta.code: "en"
 
 # ------------------------------------------------------------ Site elements (text shown to players) --
 site.brand: "CustomImages"
@@ -25,7 +24,7 @@ site.upload_nickname_title: "Image nickname"
 site.result_heading: "Upload complete"
 site.result_rename_title: "Not happy with this name? You can still change it"
 site.result_rename_button: "Save new name"
-site.footer_note: "Server MOTD: `{motd}`. Posting in game requires the `/image create` permission — ask your admin if you do not have it."
+site.footer_note: "Server: `{motd}`. Posting in game requires the `images.command.create` permission — ask your admin if you do not have it."
 site.footer_plugin: "Plugin {name} {version} · source"
 site.footer_icp: "ICP filing: {number}"
 site.upload_footer: "After uploading, copy the in-game command /image create <file name> and right-click while holding a map to place it."
@@ -57,8 +56,6 @@ common.adminEntry: "Admin"
 common.backHome: "🏠 Home"
 common.uploadAnother: "⬆️ Upload another"
 common.footerTagline: "Image Upload · dark Minecraft style · fully self-contained, no external assets."
-common.footerPermBefore: "Posting in game requires the "
-common.footerPermAfter: " permission — ask your admin if you do not have it."
 common.langSwitchTitle: "Switch language"
 common.copy: "📋 Copy"
 common.copied: "✅ Copied"
@@ -276,3 +273,4 @@ game.info_dir: "Images folder: {dir}"
 game.info_counts: "Totals: {pending} pending, {published} published, {rejected} rejected, {players} players"
 game.info_codes: "Upload codes: {codes} waiting, {sessions} sessions"
 game.info_manual_review: "Manual review is on: uploads need /{label} ok before they can be used."
+
