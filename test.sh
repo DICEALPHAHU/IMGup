@@ -46,6 +46,22 @@ fi
 
 RUN=(java -Dfile.encoding=UTF-8 -cp "$OUT:$CP:$RES")
 
+# 测试不许往工作区里拉屎。
+#
+# 起因：某次新加的测试把相对路径 "__messages__" 当成输出目录传给了
+# createDirectories，测试就在仓库根目录建了个目录，紧接着 git add -A
+# 把它提交进了公开仓库。这类污染光看测试输出是发现不了的。
+#
+# 做法：跑之前记一份工作区快照，跑完再记一份，多出来的条目就报错。
+# 只统计「文件系统里真实存在的路径」，避免 git 状态里那些跟本次无关的差异。
+# LC_ALL=C：comm 按字节序比较，而 sort 默认跟着 locale 走，两边不一致会刷
+# "input is not in sorted order" 的噪音警告。
+snapshot() {
+  LC_ALL=C find . -path ./.git -prune -o -path ./target -prune -o \
+      -path ./.build-cache -prune -o -print 2>/dev/null | LC_ALL=C sort
+}
+BEFORE="$(snapshot)"
+
 status=0
 for cls in CoreSelfTest HttpSelfTest ConfigElementsTest; do
   echo
@@ -56,6 +72,15 @@ for cls in CoreSelfTest HttpSelfTest ConfigElementsTest; do
     status=1
   fi
 done
+
+AFTER="$(snapshot)"
+LEFTOVER="$(LC_ALL=C comm -13 <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$AFTER") || true)"
+if [ -n "$LEFTOVER" ]; then
+  echo
+  echo "测试往工作区里留下了东西（不该提交，请改成用临时目录）：" >&2
+  printf '%s\n' "$LEFTOVER" | sed 's/^/  /' >&2
+  status=1
+fi
 
 echo
 if [ "$status" -eq 0 ]; then

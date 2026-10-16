@@ -586,8 +586,12 @@ public final class HttpSelfTest {
                 .set("web.admin_password", "TESTPW123456")
                 .set("limits.login_per_ip_per_hour", 3);
         WebConfig config = WebConfig.from(stub);
-        Messages msgs = new Messages(java.nio.file.Paths.get("__messages__"), config.language);
-        msgs.loadTestFixtures(java.nio.file.Paths.get("__messages__"));
+        // 注意：loadTestFixtures 会 createDirectories。这里必须给**临时目录**的
+        // 绝对路径 —— 当初图省事传了相对路径 "__messages__"，结果测试在仓库根目录
+        // 建了个目录，还被 git add -A 提交了进去。
+        java.nio.file.Path limitMsgDir = Files.createTempDirectory("imgup-limit-msg");
+        Messages msgs = new Messages(limitMsgDir, config.language);
+        msgs.loadTestFixtures(limitMsgDir);
         WebServer isolated = new WebServer(java.util.logging.Logger.getLogger("login-limit"),
                 config, new UploadStore(dataDir.resolve("limit"), imagesDir),
                 new Sessions(3600_000L, config.codeTtlMillis), msgs, new WebServer.GameBridge() {
