@@ -1,0 +1,10 @@
+# 构建产物
+target/
+.build-cache/
+
+# IDE
+.idea/
+*.iml
+
+# 本地临时文件
+*.log

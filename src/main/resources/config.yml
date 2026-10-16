@@ -1,0 +1,20 @@
+# ImgUp —— 图片上传站的服务端一半
+#
+# 只有 shared_secret 是必须和网站一致的；改完用 /imgup reload（控制台）
+# 或重启服务器生效。
+
+# 必须与网站 data/config.json 里的 shared_secret 完全一致。
+# 部署脚本会同时写入两边；手动改的话记得两边一起改。
+shared_secret: ""
+
+# 上传码有效期（秒）。要和网站的 session.code_ttl_seconds 一致。
+# 太短玩家来不及切窗口，太长则过期的码还能被拿来试。
+code_ttl_seconds: 300
+
+# 玩家确认后，这条确认信息在插件内存里保留多久等网站来取（秒）。
+# 只要比网站的轮询间隔（默认 1 秒）长就行，留大一点能容忍网站短暂重启。
+claim_ttl_seconds: 600
+
+# 是否要求 imgup.use 权限才能用 /imgup。
+# false = 所有人可用；true = 需要在 LuckPerms 里发 imgup.use。
+require_permission: false
