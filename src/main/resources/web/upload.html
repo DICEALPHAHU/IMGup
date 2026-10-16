@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title data-i18n="upload.title">$site_title</title>
+<title data-i18n="upload.title">$msg_site_title</title>
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/i18n.js"></script>
 </head>
@@ -15,22 +15,22 @@
   <div class="wrap topbar-inner">
     <a class="brand" href="/">
       <span class="brand-mark" aria-hidden="true">🖼</span>
-      <span class="brand-text" data-i18n="common.brand">$site_brand</span>
+      <span class="brand-text" data-i18n="common.brand">$msg_site_brand</span>
     </a>
-    <nav class="topnav"><a href="/" data-i18n="common.backHome">重新验证</a></nav>
+    <nav class="topnav"><a href="/" data-i18n="common.backHome">$msg_site_nav_reverify</a></nav>
   </div>
 </header>
 
 <main class="wrap">
 
   <div class="page-head">
-    <h1 class="page-title"><span class="icon" aria-hidden="true">⬆️</span><span data-i18n="upload.heading">$site_upload_heading</span></h1>
-    <p class="lede" data-i18n="upload.lede">$site_upload_lede</p>
+    <h1 class="page-title"><span class="icon" aria-hidden="true">⬆️</span><span data-i18n="upload.heading">$msg_site_upload_heading</span></h1>
+    <p class="lede" data-i18n="upload.lede">$msg_site_upload_lede</p>
   </div>
 
   <div class="verify-bar">
     <span aria-hidden="true">✅</span>
-    <span>已通过验证：<strong>$player</strong></span>
+    <span data-i18n="upload.verifiedAs">$msg_upload_verifiedAs</span><strong>$player</strong>
   </div>
 
   <form id="uploadForm" novalidate>
@@ -46,7 +46,7 @@
       </label>
 
       <div class="preview hidden" id="preview">
-        <img id="previewImg" alt="待上传图片预览">
+        <img id="previewImg" alt="$msg_upload_previewAlt" data-i18n-attr="alt:upload.previewAlt">
         <div class="preview-info">
           <p class="mono" id="fileName">—</p>
           <p class="muted" id="fileSize">—</p>
@@ -58,12 +58,12 @@
     </section>
 
     <section class="panel">
-      <h2 class="panel-title" data-i18n="upload.nicknameTitle">$site_upload_nickname_title</h2>
+      <h2 class="panel-title" data-i18n="upload.nicknameTitle">$msg_site_upload_nickname_title</h2>
 
       <div class="field">
         <label for="nickname"><span data-i18n="upload.nicknameLabel">昵称</span><span class="counter" id="nicknameCount">0 / 32</span></label>
         <input class="input" type="text" id="nickname" name="nickname" maxlength="32"
-               placeholder="例如：我的海报" autocomplete="off" enterkeyhint="done"
+               placeholder="$msg_upload_nicknamePlaceholder" data-i18n-attr="placeholder:upload.nicknamePlaceholder" autocomplete="off" enterkeyhint="done"
                data-i18n-attr="placeholder:upload.nicknamePlaceholder">
         <span class="field-hint" data-i18n="upload.nicknameHint">选好图片后会自动填成原文件名，你可以直接改成想要的名字。</span>
       </div>
@@ -71,8 +71,8 @@
       <div class="field">
         <label data-i18n="upload.namePreviewLabel">游戏内的文件名</label>
         <p class="mono name-preview" id="namePreview">—</p>
-        <span class="field-hint"><span data-i18n="upload.namePreviewHint">由「玩家名-昵称」自动生成；如果已经有同名的图，会自动加 </span><code>-2</code><span>。
-          上传后还可以再改。</span></span>
+        <span class="field-hint"><span data-i18n="upload.namePreviewHint">由「玩家名-昵称」自动生成；如果已经有同名的图，会自动加 </span><code>-2</code><span data-i18n="upload.namePreviewHintTail">。
+          $msg_upload_namePreviewHintTail</span></span>
       </div>
 
       <div class="alert alert-error hidden" id="formMsg" role="alert"></div>
@@ -82,7 +82,7 @@
         <span class="progress-text" id="progressText" data-i18n="upload.progressPrep">准备上传…</span>
       </div>
 
-      <button class="btn btn-primary btn-block btn-lg" type="submit" id="submitBtn" disabled data-i18n="upload.submit">$site_upload_button</button>
+      <button class="btn btn-primary btn-block btn-lg" type="submit" id="submitBtn" disabled data-i18n="upload.submit">$msg_site_upload_button</button>
 
       <p class="panel-note" data-i18n="upload.note">服务端会再次校验图片格式与大小，并按站长设置决定是否需要人工审核。</p>
     </section>
@@ -93,8 +93,8 @@
 
 <footer class="foot">
   <div class="wrap">
-    <p data-i18n="common.footerTagline">$site_footer_note</p>
-    <p>上传成功后请复制游戏内指令 <code>/image create 文件名</code>，手持地图按提示右键放置。</p>
+    <p data-i18n="common.footerTagline">$msg_site_footer_note</p>
+    <p><span data-i18n="site.upload_footer">$msg_site_upload_footer</span></p>
   </div>
 </footer>
 

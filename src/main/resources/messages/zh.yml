@@ -15,7 +15,6 @@ meta.code: "zh"
 # ------------------------------------------------------------ 网站元素（页面上显示给玩家的文字） --
 site.title: "图片上传站"
 site.brand: "图片上传站"
-site.nav_admin: "站长入口"
 site.home_heading: "上传海报"
 site.home_lede: "先在网页上获取一个 8 位上传码，再进游戏输入 /imgup 你的上传码 完成确认，就可以上传图片了。"
 site.home_first_step_title: "第一步 · 获取上传码"
@@ -31,6 +30,9 @@ site.result_rename_button: "保存新名字"
 site.footer_note: "图片上传站 · 深色 Minecraft 风格 · 纯静态页面，不加载任何外部资源。"
 site.footer_permission: "游戏内贴海报需要 "
 site.footer_permission_suffix: " 权限，没有权限请找站长。"
+site.upload_footer: "上传成功后请复制游戏内指令 /image create 文件名，手持地图按提示右键放置。"
+site.nav_reupload: "⬆️ 再传一张"
+site.nav_reverify: "重新验证"
 
 # ------------------------------------------------------------ 通用 --
 common.brand: "图片上传站"
@@ -118,6 +120,9 @@ upload.errTooBig: "图片太大了（{size}），请压缩到 5MB 以内再上�
 upload.errFailed: "上传失败（HTTP {status}）"
 upload.errExpired: "验证已过期，请回到首页重新获取上传码。"
 upload.errCancelled: "上传已取消。"
+upload.verifiedAs: "已通过验证："
+upload.previewAlt: "待上传图片预览"
+upload.namePreviewHintTail: "上传后还可以再改。"
 
 # ------------------------------------------------------------ 结果页 --
 result.title: "上传成功 · 图片上传站"
@@ -149,6 +154,7 @@ result.renameBadName: "这个名字不能用，换一个吧。"
 result.renameEmpty: "昵称不能是空的。"
 result.renameFailed: "改名失败（HTTP {status}）"
 result.renameNetError: "网络错误，改名失败，请稍后重试。"
+result.thumbAltPlain: "已上传的图片"
 
 # ------------------------------------------------------------ 状态句（服务端只给键，文案在这里） --
 status.published: "已发布，可以直接在游戏里贴了。"

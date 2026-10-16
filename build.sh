@@ -161,7 +161,19 @@ with zipfile.ZipFile(jar) as zf:
                 missing.append(page + ".html 的 $site_" + var + " 没有对应的 site." + var)
     if missing:
         sys.exit("模板占位符在语言文件里找不到：" + "; ".join(missing[:5]))
-    print("    模板占位符都能在语言文件里找到")
+
+    # 反向检查：site.* 声明了就必须真的被某个模板用上。
+    # 否则站长改了它页面却没变，会以为「配置不生效」—— 那种坑不如构建时拦掉。
+    used_site = set()
+    for page in ("index", "upload", "result"):
+        with zf.open("web/" + page + ".html") as fh:
+            html = fh.read().decode("utf-8")
+        used_site |= {"site." + v for v in re.findall(r"\$msg_site_([A-Za-z0-9_]+)", html)}
+    declared_site = {k for k in tables["zh"] if k.startswith("site.")}
+    dead = sorted(declared_site - used_site)
+    if dead:
+        sys.exit("这些 site.* 键声明了但没有页面用到（改了不会生效）：" + str(dead))
+    print("    模板占位符都能在语言文件里找到，且没有用不上的 site.* 键")
 PY
 
 ls -la "$OUT_DIR/$JAR_NAME"

@@ -618,14 +618,13 @@ public final class WebServer {
         values.put("lang", lang);
         for (Map.Entry<String, String> entry : messages.table(lang).entrySet()) {
             String key = entry.getKey();
-            if (key.startsWith("site.")) {
-                values.put("site_" + key.substring("site.".length()),
-                        Texts.escapeHtml(entry.getValue()));
-            }
+            // 转义后当成模板变量：键里的点换成下划线，于是 yml 里任何一个键
+            // 都能像 $msg_upload_nicknamePlaceholder 这样直接写进页面。
+            values.put("msg_" + key.replace('.', '_'), Texts.escapeHtml(entry.getValue()));
         }
-        values.put("site_show_manual_claim", config.showManualClaim ? "1" : "");
-        values.put("site_allow_rename", config.allowRename ? "1" : "");
-        values.put("site_show_copy_buttons", config.showCopyButtons ? "1" : "");
+        values.put("msg_site_show_manual_claim", config.showManualClaim ? "1" : "");
+        values.put("msg_site_allow_rename", config.allowRename ? "1" : "");
+        values.put("msg_site_show_copy_buttons", config.showCopyButtons ? "1" : "");
         // 这个 JSON 会进 <script> 里，必须把 </script> 挡住
         values.put("messages_json", messagesJson(lang));
 
@@ -715,6 +714,9 @@ public final class WebServer {
             if (braced) {
                 start++;
             }
+            // 变量名允许字母、数字、下划线和点 —— 注意必须允许大写，
+            // 因为语言文件里的键有 camelCase（upload.nicknamePlaceholder），
+            // 遇到大写就截断会把 $msg_upload_nicknamePlaceholder 切成半截。
             int end = start;
             while (end < template.length()) {
                 char ch = template.charAt(end);

@@ -208,6 +208,14 @@
       'status.rejected_reason': '这张图没有通过审核（原因：{reason}）。',
       'status.unknown': '状态未知。',
       'status.renamed': '名字已更新。',
+      'site.upload_footer': '上传成功后请复制游戏内指令 /image create 文件名，手持地图按提示右键放置。',
+      'site.nav_home': '🏠 返回首页',
+      'site.nav_reupload': '⬆️ 再传一张',
+      'site.nav_reverify': '重新验证',
+      'upload.verifiedAs': '已通过验证：',
+      'upload.previewAlt': '待上传图片预览',
+      'upload.namePreviewHintTail': '上传后还可以再改。',
+      'result.thumbAltPlain': '已上传的图片',
     },
 
     en: {

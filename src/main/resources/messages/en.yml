@@ -14,7 +14,6 @@ meta.code: "en"
 # ------------------------------------------------------------ Site elements (text shown to players) --
 site.title: "Image Upload"
 site.brand: "Image Upload"
-site.nav_admin: "Admin"
 site.home_heading: "Upload a poster"
 site.home_lede: "Get an 8-character upload code here, then type /imgup <your code> in game to confirm. After that you can upload images."
 site.home_first_step_title: "Step 1 · Get an upload code"
@@ -30,6 +29,9 @@ site.result_rename_button: "Save new name"
 site.footer_note: "Image Upload · dark Minecraft style · fully self-contained, no external assets."
 site.footer_permission: "Posting in game requires the "
 site.footer_permission_suffix: " permission — ask your admin if you do not have it."
+site.upload_footer: "After uploading, copy the in-game command /image create <file name> and right-click while holding a map to place it."
+site.nav_reupload: "⬆️ Upload another"
+site.nav_reverify: "Verify again"
 
 # ------------------------------------------------------------ Common --
 common.brand: "Image Upload"
@@ -117,6 +119,9 @@ upload.errTooBig: "The image is too large ({size}). Please compress it below 5MB
 upload.errFailed: "Upload failed (HTTP {status})"
 upload.errExpired: "Your verification expired. Please go back home and get a new upload code."
 upload.errCancelled: "Upload cancelled."
+upload.verifiedAs: "Verified as:"
+upload.previewAlt: "Preview of the image to upload"
+upload.namePreviewHintTail: "You can still change it after uploading."
 
 # ------------------------------------------------------------ Result page --
 result.title: "Upload complete · Image Upload"
@@ -148,6 +153,7 @@ result.renameBadName: "That name cannot be used. Please pick a different one."
 result.renameEmpty: "The nickname cannot be empty."
 result.renameFailed: "Rename failed (HTTP {status})"
 result.renameNetError: "Network error — rename failed. Please try again later."
+result.thumbAltPlain: "Uploaded image"
 
 # ------------------------------------------------------------ Status lines (the server sends the key, text lives here) --
 status.published: "Published — you can post it in game now."

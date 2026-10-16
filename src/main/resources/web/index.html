@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title data-i18n="index.title">$site_title</title>
+<title data-i18n="index.title">$msg_site_title</title>
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/i18n.js"></script>
 </head>
@@ -14,26 +14,25 @@
   <div class="wrap topbar-inner">
     <a class="brand" href="/">
       <span class="brand-mark" aria-hidden="true">🖼</span>
-      <span class="brand-text" data-i18n="common.brand">$site_brand</span>
+      <span class="brand-text" data-i18n="common.brand">$msg_site_brand</span>
     </a>
-    <nav class="topnav"><a href="/admin/" data-i18n="common.adminEntry">$site_nav_admin</a></nav>
+    <nav class="topnav"><a href="/upload" data-i18n="common.uploadAnother">$msg_site_nav_reupload</a></nav>
   </div>
 </header>
 
 <main class="wrap">
 
   <div class="page-head">
-    <h1 class="page-title"><span class="icon" aria-hidden="true">📮</span><span data-i18n="index.heading">$site_home_heading</span></h1>
-    <p class="lede"><span data-i18n="index.lede">$site_home_lede</span><code>/imgup 你的上传码</code><span data-i18n="index.ledeSuffix"> 完成确认，就可以上传图片了。</span></p>
+    <h1 class="page-title"><span class="icon" aria-hidden="true">📮</span><span data-i18n="index.heading">$msg_site_home_heading</span></h1>
+    <p class="lede"><span data-i18n="index.lede">$msg_site_home_lede</span><code>/imgup 你的上传码</code><span data-i18n="index.ledeSuffix"> 完成确认，就可以上传图片了。</span></p>
   </div>
 
-  <div class="alert alert-error" id="serverError" role="alert">$error</div>
 
   <section class="panel">
-    <h2 class="panel-title" data-i18n="index.step1Title">$site_home_first_step_title</h2>
+    <h2 class="panel-title" data-i18n="index.step1Title">$msg_site_home_first_step_title</h2>
     <p class="muted" id="getHint"><span data-i18n="index.getHint">点下面的按钮生成上传码，然后在游戏聊天框里输入 </span><code>/imgup 上传码</code><span data-i18n="index.getHintSuffix">。上传码 5 分钟内有效，网页会自动检测你的确认。</span></p>
 
-    <button class="btn btn-primary btn-block btn-lg" type="button" id="newCodeBtn" data-i18n="index.newCode">$site_home_button</button>
+    <button class="btn btn-primary btn-block btn-lg" type="button" id="newCodeBtn" data-i18n="index.newCode">$msg_site_home_button</button>
 
     <div class="hidden" id="codeArea">
       <p class="sub-title" data-i18n="index.yourCode">你的上传码（点击可复制）</p>
@@ -48,7 +47,7 @@
   </section>
 
   <section class="panel">
-    <h2 class="panel-title" data-i18n="index.step2Title">$site_home_second_step_title</h2>
+    <h2 class="panel-title" data-i18n="index.step2Title">$msg_site_home_second_step_title</h2>
     <p class="muted" data-i18n="index.step2Hint">如果自动检测没有反应，可以在游戏里确认之后，把同一个上传码填到这里手动进入。</p>
 
     <form id="claimForm" novalidate>
@@ -72,8 +71,8 @@
 
 <footer class="foot">
   <div class="wrap">
-    <p data-i18n="common.footerTagline">$site_footer_note</p>
-    <p><span data-i18n="common.footerPermBefore">$site_footer_permission</span><code>images.command.create</code><span data-i18n="common.footerPermAfter">$site_footer_permission_suffix</span></p>
+    <p data-i18n="common.footerTagline">$msg_site_footer_note</p>
+    <p><span data-i18n="common.footerPermBefore">$msg_site_footer_permission</span><code>images.command.create</code><span data-i18n="common.footerPermAfter">$msg_site_footer_permission_suffix</span></p>
   </div>
 </footer>
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title data-i18n="result.title">$site_title</title>
+<title data-i18n="result.title">$msg_site_title</title>
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/i18n.js"></script>
 </head>
@@ -17,16 +17,16 @@
   <div class="wrap topbar-inner">
     <a class="brand" href="/">
       <span class="brand-mark" aria-hidden="true">🖼</span>
-      <span class="brand-text" data-i18n="common.brand">$site_brand</span>
+      <span class="brand-text" data-i18n="common.brand">$msg_site_brand</span>
     </a>
-    <nav class="topnav"><a href="/upload">再传一张</a></nav>
+    <nav class="topnav"><a href="/upload" data-i18n="common.uploadAnother">$msg_site_nav_reupload</a></nav>
   </div>
 </header>
 
 <main class="wrap">
 
   <div class="page-head">
-    <h1 class="page-title"><span class="icon" aria-hidden="true">🎉</span><span data-i18n="result.heading">$site_result_heading</span></h1>
+    <h1 class="page-title"><span class="icon" aria-hidden="true">🎉</span><span data-i18n="result.heading">$msg_site_result_heading</span></h1>
     <p class="lede" id="renamedText" data-i18n="$renamed_key"
        data-i18n-params="">$renamed_text</p>
     <p class="lede" id="statusText" data-i18n="$status_key"
@@ -37,7 +37,7 @@
     <h2 class="panel-title" data-i18n="result.previewTitle">图片预览</h2>
     <img class="result-thumb" src="$url" data-i18n-attr="alt:result.thumbAlt"
          data-i18n-attr-params="alt:{&quot;name&quot;:&quot;$name&quot;}"
-         alt="已上传的图片：$name">
+         alt="$msg_result_thumbAltPlain：$name">
     <p class="muted"><span data-i18n="result.uploader">上传玩家：</span><span class="mono">$player</span></p>
   </section>
 
@@ -50,17 +50,17 @@
     <p class="panel-note" data-i18n="result.fileNameNote">图片以这个完整文件名保存在服务器上，游戏插件按完整文件名匹配。</p>
 
     <div id="renameBox" class="rename-box hidden">
-      <h3 class="sub-title" data-i18n="result.renameTitle">$site_result_rename_title</h3>
+      <h3 class="sub-title" data-i18n="result.renameTitle">$msg_site_result_rename_title</h3>
       <div class="field">
         <label for="renameInput"><span data-i18n="result.renameLabel">图片昵称</span><span class="counter" id="renameCount">0 / 32</span></label>
         <input class="input" type="text" id="renameInput" maxlength="32" autocomplete="off"
-               placeholder="例如：我的海报" enterkeyhint="done"
+               placeholder="$msg_result_renamePlaceholder" data-i18n-attr="placeholder:result.renamePlaceholder" enterkeyhint="done"
                data-i18n-attr="placeholder:result.renamePlaceholder">
         <span class="field-hint"><span data-i18n="result.renamePreviewPrefix">最终文件名会是 </span><span class="mono" id="renamePreview">—</span></span>
       </div>
       <div class="alert alert-error hidden" id="renameMsg" role="alert"></div>
       <div class="alert alert-ok hidden" id="renameOk" role="status"></div>
-      <button class="btn" type="button" id="renameBtn" data-i18n="result.renameSave">$site_result_rename_button</button>
+      <button class="btn" type="button" id="renameBtn" data-i18n="result.renameSave">$msg_site_result_rename_button</button>
       <p class="panel-note" data-i18n="result.renameNote">审核通过之后就改不了了 —— 那时候名字已经进了游戏世界，改了会让已经贴出去的海报找不到图。</p>
     </div>
     <p class="panel-note" id="renameLocked" data-i18n="result.renameLocked">这张图已经发布，名字不能再改了。</p>
@@ -89,7 +89,7 @@
 
 <footer class="foot">
   <div class="wrap">
-    <p data-i18n="common.footerTagline">$site_footer_note</p>
+    <p data-i18n="common.footerTagline">$msg_site_footer_note</p>
     <p><span data-i18n="result.footerFormat">文件名格式：</span><code>游戏ID-图片昵称.png</code><span>；重名会自动加 </span><code>-2</code><span>，总长不超过 64 个字符。</span></p>
   </div>
 </footer>
