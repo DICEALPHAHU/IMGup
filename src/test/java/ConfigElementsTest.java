@@ -122,6 +122,7 @@ public final class ConfigElementsTest {
             checkFooterServerInfo(base);
             checkAdminPage(base);
             checkEveryAssetResolves(base);
+            checkHiddenAttributeWorks(base);
             checkPage(base + "/result", "结果页", List.of(
                     "site.title", "site.brand", "site.nav_reupload",
                     "site.result_heading", "site.result_rename_title",
@@ -236,6 +237,56 @@ public final class ConfigElementsTest {
                 bad++;
                 System.out.println("  [!!]   " + must + " 取不到，HTTP " + status);
             }
+        }
+    }
+
+    /**
+     * hidden 属性必须真能隐藏元素。
+     *
+     * 浏览器默认的 [hidden] { display: none } 是 UA 样式，作者样式里任何一条
+     * display 都能盖过它。曾经 .lang-menu 写了 display:flex，于是语言下拉菜单
+     * 一直展开着挡住页面 —— 而当时所有测试都是绿的，因为没人查过这件事。
+     */
+    private static void checkHiddenAttributeWorks(String base) throws Exception {
+        System.out.println("\n=== hidden 属性要真能藏住元素 ===");
+        String css = fetch(base + "/static/app.css");
+        String code = css.replaceAll("(?s)/\\*.*?\\*/", "");   // 去掉注释
+
+        boolean guard = code.matches(
+                "(?s).*\\[hidden\\]\\s*\\{\\s*display\\s*:\\s*none\\s*!important.*");
+        if (guard) {
+            ok++;
+            System.out.println("  [OK]   [hidden] { display: none !important } 在");
+        } else {
+            bad++;
+            System.out.println("  [!!]   样式表里没有 [hidden] 兜底规则，"
+                    + "hidden 属性会被 display 盖过");
+        }
+
+        // 不许有别的 !important display 跟它竞争（否则元素可能藏不住）
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("display\\s*:\\s*([^;]+?)\\s*!important").matcher(code);
+        java.util.List<String> rivals = new java.util.ArrayList<>();
+        while (m.find()) {
+            if (!"none".equals(m.group(1).trim())) {
+                rivals.add(m.group(1).trim());
+            }
+        }
+        if (rivals.isEmpty()) {
+            ok++;
+            System.out.println("  [OK]   没有别的 !important display 跟它竞争");
+        } else {
+            bad++;
+            System.out.println("  [!!]   这些 !important display 会跟 [hidden] 竞争：" + rivals);
+        }
+
+        // .lang-menu 就是当初出问题的那个：它必须真的被 hidden 属性控制住
+        if (code.contains(".lang-menu") && guard) {
+            ok++;
+            System.out.println("  [OK]   语言下拉菜单（.lang-menu）被 [hidden] 管住了");
+        } else {
+            bad++;
+            System.out.println("  [!!]   语言菜单可能又会一直展开");
         }
     }
 

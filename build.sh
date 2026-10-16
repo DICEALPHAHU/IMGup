@@ -247,6 +247,35 @@ with zipfile.ZipFile(jar) as zf:
         sys.exit("页面引用的静态资源在 jar 里不存在（页面会缺样式/脚本）："
                  + str(sorted(set(missing_assets))))
     print("    页面引用的 /static/ 资源都在 jar 里")
+
+    # hidden 属性必须真能隐藏元素。
+    # 浏览器默认的 [hidden]{display:none} 是 UA 样式，作者样式里任何一条 display
+    # 都会盖过它 —— 曾经因为 .lang-menu 写了 display:flex，语言下拉菜单一直展开，
+    # 挡住了页面。所以样式表里必须有一条 !important 的 [hidden]，而且不许有
+    # 别的 !important display 跟它竞争。
+    with zf.open("web/app.css") as fh:
+        css_text = fh.read().decode("utf-8")
+    css_code = re.sub(r"/\*.*?\*/", "", css_text, flags=re.S)
+    if not re.search(r"\[hidden\]\s*\{\s*display\s*:\s*none\s*!important", css_code):
+        sys.exit("app.css 里缺少 [hidden] { display: none !important; } —— "
+                 "hidden 属性会被作者样式的 display 盖过，元素藏不住")
+    rivals = [(sel.strip(), val.strip())
+              for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", css_code)
+              for val in re.findall(r"display\s*:\s*([^;]+?)\s*!important", body)
+              if val.strip() != "none"]
+    if rivals:
+        sys.exit("这些 !important 的 display 会和 [hidden] 竞争，可能让元素藏不住：" + str(rivals))
+    print("    hidden 属性有 !important 兜底，且无人竞争")
+
+    # lang-switch 是 i18n.js 运行时创建的容器类，HTML 里不许用它 ——
+    # 曾经后台的退出登录按钮也写成 class="lang-switch"，导致
+    # 「是否已创建」的判断被它命中，后台页面永远建不出语言菜单。
+    for page in ("index", "upload", "result", "admin"):
+        with zf.open("web/" + page + ".html") as fh:
+            if "lang-switch" in fh.read().decode("utf-8"):
+                sys.exit(page + ".html 里用了 lang-switch（这个类由 i18n.js 创建，"
+                         "HTML 里用它会顶掉语言菜单的创建判断）")
+    print("    HTML 里没有误用 JS 专用类")
 PY
 
 ls -la "$OUT_DIR/$JAR_NAME"

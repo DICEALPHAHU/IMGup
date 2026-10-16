@@ -63,6 +63,13 @@ code, kbd { font-family: var(--mono); }
 .mono { font-family: var(--mono); }
 .muted { color: var(--muted); }
 .hidden { display: none !important; }
+
+/* hidden 属性必须真的把元素藏起来。
+   浏览器默认的 [hidden] { display: none } 是 **UA 样式**，作者样式里任何一条
+   display 都会盖过它 —— 于是「给元素写了 display:flex，又用 hidden 属性隐藏」
+   就会一直显示出来。语言下拉菜单和后台的退出登录按钮都这么翻过车。
+   这里显式声明一次，全站都不再需要各自提防。 */
+[hidden] { display: none !important; }
 .visually-hidden {
   position: absolute !important;
   width: 1px; height: 1px;

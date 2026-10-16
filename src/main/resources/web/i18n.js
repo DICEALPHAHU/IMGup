@@ -605,16 +605,23 @@
   var AVAILABLE = [];
   /** 当前界面语言（服务端渲染时注入的 IMGUP_LANG） */
   var CURRENT = (typeof window.IMGUP_LANG === 'string' && window.IMGUP_LANG) || FALLBACK;
+  /** 语言开关容器的 id，用来判断是否已经创建过 */
+  var SWITCH_ID = 'imgupLangSwitch';
+
   /** 兜底：拿不到 /api/languages 时至少显示这两门 */
   var FALLBACK_NAMES = { zh: '中文（简体）', en: 'English' };
 
   function buildSwitcher() {
     // 放在导航最后 —— 页面是 RTL 友好布局时 .topnav 靠右，所以它在右上角
     var nav = document.querySelector('.topnav');
-    if (!nav || nav.querySelector('.lang-switch')) { return; }
+    // 用专门的 id 判断「是不是已经建过了」。
+    // 早先用的是 nav.querySelector('.lang-switch')，结果后台那个按钮不小心
+    // 也叫 lang-switch，于是后台页面永远建不出语言菜单。
+    if (!nav || document.getElementById(SWITCH_ID)) { return; }
 
     var box = document.createElement('div');
     box.className = 'lang-switch';
+    box.id = SWITCH_ID;
 
     var btn = document.createElement('button');
     btn.type = 'button';
