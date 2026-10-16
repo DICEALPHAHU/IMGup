@@ -6,63 +6,58 @@ import org.bukkit.entity.Player;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.io.IOException;
 import java.util.Locale;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.regex.Pattern;
+import java.util.logging.Level;
 
 /**
- * ImgUp —— 图片上传站的服务端一半。
+ * ImgUp —— 图片上传站，整个网站就跑在这个插件里。
  *
- * 职责只有两件事：
- *   1. 玩家在游戏里输入 /imgup &lt;码&gt; 时，登记「哪个玩家确认了哪个码」
- *   2. 通过 RCON 响应网站的 imgup add / imgup poll / imgup pending / imgup info
+ * 和 1.x 的区别：以前插件只负责「登记玩家确认了哪个码」，网页是外面一个
+ * Docker 里的 Python 服务，两边靠 RCON + shared_secret 通信。现在内置一个
+ * HTTP 服务（{@link WebServer}），上传码直接落在内存里 ——
+ * 玩家敲完 /imgup，网页当场就知道，不需要轮询、不需要密钥、不需要额外进程。
  *
- * 插件不落盘、不联网、不读图片目录，所有状态都在内存里，重启即清空。
- * 上传码只有 5 分钟寿命，这个取舍是刻意的。
+ * 职责边界很清晰：
+ *   · 本类只碰 Bukkit 的东西（配置、指令、玩家、日志、调度器）
+ *   · WebServer / UploadStore / ImageTools 完全不依赖 Bukkit，可以单独测试
+ *   · 两者之间只有 {@link WebServer.GameBridge} 一个接口，且所有 Bukkit 调用
+ *     都通过调度器回到主线程 —— HTTP 请求线程绝不直接碰游戏世界
  */
-public final class ImgUpPlugin extends JavaPlugin {
+public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridge {
 
-    /** 去掉 I / O / 0 / 1，避免玩家抄错。 */
-    private static final Pattern CODE_PATTERN = Pattern.compile("^[A-HJ-NP-Z2-9]{8}$");
+    private WebConfig webConfig;
+    private Sessions sessions;
+    private UploadStore store;
+    private WebServer web;
 
-    /** 玩家点过名的上传码 -> 码本身，用于 RCON 取走。 */
-    private static final class Claim {
-        final String code;
-        final String player;
-        final UUID uuid;
-        final long at;
-
-        Claim(String code, String player, UUID uuid, long at) {
-            this.code = code;
-            this.player = player;
-            this.uuid = uuid;
-            this.at = at;
-        }
-    }
-
-    /** 已登记、等待玩家确认的码：code -> 过期时间戳（毫秒）。 */
-    private final Map<String, Long> pending = new ConcurrentHashMap<>();
-
-    /** 玩家已确认、等待网站取走的记录。 */
-    private final List<Claim> claimed = new ArrayList<>();
-
-    private String sharedSecret = "";
-    private long codeTtlMillis = 300_000L;
-    private long claimTtlMillis = 600_000L;
+    /** 图片最终目录：Images 插件的数据目录。 */
+    private java.nio.file.Path imagesDir;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        reloadSettings();
 
-        this.pending.clear();
-        this.claimed.clear();
+        // ---- 图片目录：优先用 Images 插件的目录，因为 /image create 只认那里 ----
+        org.bukkit.plugin.Plugin images = getServer().getPluginManager().getPlugin("Images");
+        if (images != null && images.isEnabled()) {
+            imagesDir = images.getDataFolder().toPath();
+        } else {
+            // 没装 Images 插件时退回自己的目录，至少上传功能可用
+            imagesDir = getDataFolder().toPath().resolve("images");
+            getLogger().warning("没有找到已启用的 Images 插件，上传的图片会存到 "
+                    + imagesDir + "；游戏内 /image create 用不了。");
+        }
 
+        try {
+            store = new UploadStore(getDataFolder().toPath(), imagesDir);
+        } catch (IOException e) {
+            getLogger().log(Level.SEVERE, "无法初始化上传目录，插件停用", e);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
+        // ---- 指令 ----
         ImgUpCommand executor = new ImgUpCommand(this);
         PluginCommand root = getCommand("imgup");
         if (root == null) {
@@ -73,16 +68,19 @@ public final class ImgUpPlugin extends JavaPlugin {
         root.setExecutor(executor);
         root.setTabCompleter(executor);
 
-        getLogger().info("ImgUp 已启用：玩家用 /imgup <上传码> 确认上传");
-        if (sharedSecret.isEmpty()) {
-            getLogger().warning("shared_secret 为空，网站将无法通过 RCON 与本插件通信，请检查 config.yml");
-        }
+        reloadSettings();
+        startWeb();
+
+        getLogger().info("ImgUp 已启用：玩家用 /imgup <上传码> 确认，然后到 "
+                + webConfig.base() + " 上传图片");
     }
 
     @Override
     public void onDisable() {
-        this.pending.clear();
-        this.claimed.clear();
+        if (web != null) {
+            web.stop();
+            web = null;
+        }
         getLogger().info("ImgUp 已停用");
     }
 
@@ -93,11 +91,72 @@ public final class ImgUpPlugin extends JavaPlugin {
     }
 
     private void reloadSettings() {
-        this.sharedSecret = getConfig().getString("shared_secret", "");
-        long codeTtlSeconds = getConfig().getLong("code_ttl_seconds", 300L);
-        long claimTtlSeconds = getConfig().getLong("claim_ttl_seconds", 600L);
-        this.codeTtlMillis = Math.max(30L, codeTtlSeconds) * 1000L;
-        this.claimTtlMillis = Math.max(60L, claimTtlSeconds) * 1000L;
+        this.webConfig = WebConfig.from(getConfig());
+        this.sessions = new Sessions(6 * 3600_000L, webConfig.codeTtlMillis);
+    }
+
+    /** 启动（或重启）内置网站。端口被占用等失败只记日志，不拖挂整个插件。 */
+    void startWeb() {
+        if (web != null) {
+            web.stop();
+            web = null;
+        }
+        if (!webConfig.enabled) {
+            getLogger().info("config.yml 里 web.enabled = false，内置网站未启动");
+            return;
+        }
+        web = new WebServer(getLogger(), webConfig, store, sessions, this);
+        if (!web.start()) {
+            getLogger().warning("网站没起来，但 /imgup 指令仍然可用（玩家确认了也没地方上传）");
+        }
+    }
+
+    /** /imgup reload 用：重新读配置，网站跟着重启（端口可能变了）。 */
+    void reloadAll() {
+        reloadConfig();
+        startWeb();
+    }
+
+    // -------------------------------------------------- WebServer.GameBridge
+
+    /**
+     * 在游戏里给玩家发提示。
+     *
+     * 这个方法可能从 HTTP 请求线程调用，所以**必须**跳回主线程再碰 Bukkit ——
+     * Paper 的 API 不是线程安全的，从别的线程调 getPlayer 之类是未定义行为。
+     * 玩家不在线就静默丢弃（比如他网页还开着但已经退出游戏）。
+     */
+    @Override
+    public void notify(String player, String message) {
+        if (player == null || player.isEmpty() || !webConfig.notifyPlayer) {
+            return;
+        }
+        if (getServer().isPrimaryThread()) {
+            deliver(player, message);
+            return;
+        }
+        getServer().getScheduler().runTask(this, () -> deliver(player, message));
+    }
+
+    private void deliver(String playerName, String message) {
+        Player player = getServer().getPlayerExact(playerName);
+        if (player == null || !player.isOnline()) {
+            return;
+        }
+        player.sendMessage(ChatColor.GREEN + "[图片上传] " + ChatColor.WHITE + message);
+    }
+
+    @Override
+    public boolean isOnline(String player) {
+        if (player == null || player.isEmpty()) {
+            return false;
+        }
+        if (getServer().isPrimaryThread()) {
+            Player online = getServer().getPlayerExact(player);
+            return online != null && online.isOnline();
+        }
+        // 请求线程不问在线状态：拿不准就返回 false，别去碰主线程的东西
+        return false;
     }
 
     // ------------------------------------------------------------ 玩家确认
@@ -108,142 +167,56 @@ public final class ImgUpPlugin extends JavaPlugin {
      * @return 给玩家看的一句话
      */
     String confirm(Player player, String rawCode) {
-        String code = rawCode == null ? "" : rawCode.trim().toUpperCase(Locale.ROOT);
-        code = code.replace("-", "").replace(" ", "").replace("_", "");
-
-        if (!CODE_PATTERN.matcher(code).matches()) {
-            return ChatColor.RED + "上传码格式不对" + ChatColor.GRAY
-                    + "（应该是 8 位字母数字，注意没有 I、O、0、1）";
-        }
-
-        long now = System.currentTimeMillis();
-        prune(now);
-
-        Long expiresAt = pending.get(code);
-        if (expiresAt == null) {
-            // 可能是重复确认
-            for (Claim claim : claimed) {
-                if (claim.code.equals(code) && claim.uuid.equals(player.getUniqueId())) {
-                    return ChatColor.YELLOW + "这个上传码你已经确认过了，回网页继续上传吧";
-                }
-            }
-            return ChatColor.RED + "上传码无效或已过期，请回网站重新获取";
-        }
-        if (expiresAt < now) {
-            pending.remove(code);
-            return ChatColor.RED + "上传码已过期，请回网站重新获取";
-        }
-
-        pending.remove(code);
-        claimed.add(new Claim(code, player.getName(), player.getUniqueId(), now));
-        getLogger().info("玩家 " + player.getName() + " 确认了上传码 " + code);
-
-        return ChatColor.GREEN + "上传码已确认！" + ChatColor.GRAY + "请回到网页继续上传图片";
+        Sessions.ConfirmResult result = sessions.confirm(rawCode, player.getName());
+        return switch (result) {
+            case OK -> ChatColor.GREEN + "上传码已确认" + ChatColor.GRAY
+                    + "，回到网页就能上传图片了（这个码已经作废，不用担心别人看到）";
+            case BAD_FORMAT -> ChatColor.RED + "上传码格式不对" + ChatColor.GRAY
+                    + "（8 位字母数字，不含容易看错的 I、O、0、1。可以直接从网页复制）";
+            case UNKNOWN -> ChatColor.RED + "这个上传码不对或已经过期" + ChatColor.GRAY
+                    + "，请回到网页重新获取一个";
+        };
     }
 
-    /** 登记一个网站生成的上传码。 */
-    boolean addCode(String code) {
-        long now = System.currentTimeMillis();
-        prune(now);
-        Long previous = pending.putIfAbsent(code, now + codeTtlMillis);
-        return previous == null;
+    // ------------------------------------------------------------ 访问器
+
+    WebConfig webConfig() {
+        return webConfig;
     }
 
-    private void prune(long now) {
-        Iterator<Map.Entry<String, Long>> it = pending.entrySet().iterator();
-        while (it.hasNext()) {
-            if (it.next().getValue() < now) {
-                it.remove();
-            }
-        }
-        Iterator<Claim> claims = claimed.iterator();
-        while (claims.hasNext()) {
-            if (now - claims.next().at > claimTtlMillis) {
-                claims.remove();
-            }
-        }
+    UploadStore store() {
+        return store;
     }
 
-    // ------------------------------------------------------------ RCON 接口
-
-    /**
-     * 响应网站的 RCON 命令。返回 null 表示这不是 ImgUp 的命令，交回服务端处理。
-     *
-     * @param rawCommand 不带前导斜杠的完整命令
-     */
-    String handleCommand(CommandSender sender, String rawCommand) {
-        String[] parts = rawCommand.trim().split("\\s+");
-        if (parts.length == 0 || !parts[0].equalsIgnoreCase("imgup")) {
-            return null;
-        }
-
-        if (parts.length < 2) {
-            return usage();
-        }
-        String sub = parts[1].toLowerCase(Locale.ROOT);
-
-        if (sub.equals("help")) {
-            return usage();
-        }
-
-        // 以下子命令都要求 secret
-        if (parts.length < 3) {
-            return "DENY";
-        }
-        if (sharedSecret.isEmpty() || !sharedSecret.equals(parts[2])) {
-            getLogger().warning("收到 shared_secret 不匹配的 RCON 请求，来自 " + sender.getName());
-            return "DENY";
-        }
-
-        switch (sub) {
-            case "add": {
-                if (parts.length < 4) {
-                    return "DENY";
-                }
-                String code = parts[3].toUpperCase(Locale.ROOT);
-                if (!CODE_PATTERN.matcher(code).matches()) {
-                    return "BADCODE";
-                }
-                return addCode(code) ? "ADDED" : "EXISTS";
-            }
-            case "poll": {
-                prune(System.currentTimeMillis());
-                List<String> lines = new ArrayList<>();
-                Iterator<Claim> it = claimed.iterator();
-                while (it.hasNext()) {
-                    Claim claim = it.next();
-                    lines.add("OK " + claim.code + " " + claim.player + " " + claim.uuid);
-                    it.remove(); // 取走即清空
-                }
-                if (lines.isEmpty()) {
-                    return "EMPTY";
-                }
-                return String.join("\n", lines);
-            }
-            case "pending": {
-                prune(System.currentTimeMillis());
-                return "PENDING " + pending.size();
-            }
-            case "info": {
-                prune(System.currentTimeMillis());
-                return "IMGUP " + getDescription().getVersion()
-                        + " CODES " + pending.size()
-                        + " CLAIMS " + claimed.size();
-            }
-            case "reload": {
-                reloadConfig();
-                return "RELOADED";
-            }
-            default:
-                return usage();
-        }
+    Sessions sessions() {
+        return sessions;
     }
 
-    private String usage() {
-        return "IMGUP usage: imgup add|poll|pending|info <secret> [code]";
+    WebServer web() {
+        return web;
     }
 
-    String getSharedSecret() {
-        return sharedSecret;
+    java.nio.file.Path imagesDir() {
+        return imagesDir;
+    }
+
+    boolean requirePermission() {
+        return getConfig().getBoolean("require_permission", false);
+    }
+
+    /** 玩家有没有管理权限。控制台恒为 true。 */
+    boolean isAdmin(CommandSender sender) {
+        return !(sender instanceof Player) || sender.hasPermission("imgup.admin");
+    }
+
+    String webStatus() {
+        if (web == null) {
+            return "未启动";
+        }
+        return web.isRunning() ? ("运行中，端口 " + web.port()) : "启动失败";
+    }
+
+    static String normalize(String raw) {
+        return raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
     }
 }

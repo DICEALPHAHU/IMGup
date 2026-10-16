@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title data-i18n="result.title">$site_title</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/i18n.js"></script>
+</head>
+<body>
+<span class="visually-hidden" id="playerName">$player</span>
+<span class="visually-hidden" id="nicknameValue">$nickname</span>
+<span class="visually-hidden" id="canRename">$can_rename</span>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true">🖼</span>
+      <span class="brand-text" data-i18n="common.brand">$site_brand</span>
+    </a>
+    <nav class="topnav"><a href="/upload">再传一张</a></nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="page-head">
+    <h1 class="page-title"><span class="icon" aria-hidden="true">🎉</span><span data-i18n="result.heading">$site_result_heading</span></h1>
+    <p class="lede" id="renamedText" data-i18n="$renamed_key"
+       data-i18n-params="">$renamed_text</p>
+    <p class="lede" id="statusText" data-i18n="$status_key"
+       data-i18n-params="$status_params">$status_text</p>
+  </div>
+
+  <section class="panel">
+    <h2 class="panel-title" data-i18n="result.previewTitle">图片预览</h2>
+    <img class="result-thumb" src="$url" data-i18n-attr="alt:result.thumbAlt"
+         data-i18n-attr-params="alt:{&quot;name&quot;:&quot;$name&quot;}"
+         alt="已上传的图片：$name">
+    <p class="muted"><span data-i18n="result.uploader">上传玩家：</span><span class="mono">$player</span></p>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title" data-i18n="result.fileNameTitle">文件名</h2>
+    <div class="copy-row">
+      <code class="name-box" id="nameBox">$name</code>
+      <button class="btn" type="button" data-copy="nameBox" data-i18n="result.copyName" data-label="📋 复制文件名">📋 复制文件名</button>
+    </div>
+    <p class="panel-note" data-i18n="result.fileNameNote">图片以这个完整文件名保存在服务器上，游戏插件按完整文件名匹配。</p>
+
+    <div id="renameBox" class="rename-box hidden">
+      <h3 class="sub-title" data-i18n="result.renameTitle">$site_result_rename_title</h3>
+      <div class="field">
+        <label for="renameInput"><span data-i18n="result.renameLabel">图片昵称</span><span class="counter" id="renameCount">0 / 32</span></label>
+        <input class="input" type="text" id="renameInput" maxlength="32" autocomplete="off"
+               placeholder="例如：我的海报" enterkeyhint="done"
+               data-i18n-attr="placeholder:result.renamePlaceholder">
+        <span class="field-hint"><span data-i18n="result.renamePreviewPrefix">最终文件名会是 </span><span class="mono" id="renamePreview">—</span></span>
+      </div>
+      <div class="alert alert-error hidden" id="renameMsg" role="alert"></div>
+      <div class="alert alert-ok hidden" id="renameOk" role="status"></div>
+      <button class="btn" type="button" id="renameBtn" data-i18n="result.renameSave">$site_result_rename_button</button>
+      <p class="panel-note" data-i18n="result.renameNote">审核通过之后就改不了了 —— 那时候名字已经进了游戏世界，改了会让已经贴出去的海报找不到图。</p>
+    </div>
+    <p class="panel-note" id="renameLocked" data-i18n="result.renameLocked">这张图已经发布，名字不能再改了。</p>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title" data-i18n="result.useInGame">在游戏里使用</h2>
+    <div class="copy-row">
+      <code class="cmd-box" id="cmdBox">/image create $name</code>
+      <button class="btn btn-primary" type="button" data-copy="cmdBox" data-i18n="result.copyCommand" data-label="📋 复制指令">📋 复制指令</button>
+    </div>
+    <ol class="steps">
+      <li data-i18n="result.step1">点上面的按钮复制指令。</li>
+      <li><span data-i18n="result.step2">回到游戏，在聊天框里粘贴并发送（PC 端 </span><code>Ctrl+V</code><span>，手机端长按输入框粘贴）。</span></li>
+      <li data-i18n="result.step3">手持地图按游戏内的提示右键放置海报。</li>
+    </ol>
+    <p class="panel-note"><span data-i18n="result.permissionNote">贴海报还需要你在游戏里拥有 </span><code>images.command.create</code><span> 权限；如果提示没有权限，请联系站长。</span></p>
+  </section>
+
+  <div class="btn-row">
+    <a class="btn" href="/upload" data-i18n="common.uploadAnother">⬆️ 再传一张</a>
+    <a class="btn" href="/" data-i18n="common.backHome">🏠 返回首页</a>
+  </div>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p data-i18n="common.footerTagline">$site_footer_note</p>
+    <p><span data-i18n="result.footerFormat">文件名格式：</span><code>游戏ID-图片昵称.png</code><span>；重名会自动加 </span><code>-2</code><span>，总长不超过 64 个字符。</span></p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var t = window.IMGUP_I18N.t;
+
+  var statusText = document.getElementById('statusText');
+  var renamedText = document.getElementById('renamedText');
+  /* 服务端给的中文原文为空就永远隐藏；英文模式下引擎会把 textContent 换成非空英文，
+     所以不能看「当前文本」，要在引擎动手之前把原始状态记下来。 */
+  var renamedIsEmpty = !renamedText || renamedText.textContent.trim() === '';
+
+  if (statusText && !statusText.textContent.trim()) {
+    statusText.textContent = t('result.statusDefault');
+  }
+  if (renamedText && renamedIsEmpty) { renamedText.classList.add('hidden'); }
+
+  function legacyCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', 'readonly');
+    ta.className = 'copy-sink';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  function copyText(text) {
+    return new Promise(function (resolve) {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(
+          function () { resolve(true); },
+          function () { resolve(legacyCopy(text)); }
+        );
+      } else {
+        resolve(legacyCopy(text));
+      }
+    });
+  }
+
+  /* 服务端可能带 message_key（语言中立的键）+ message_params；拿不到就回退它给的中文。 */
+  function serverText(data, fallbackKey, params) {
+    if (data && data.message_key) {
+      var p = data.message_params || params || null;
+      return t(data.message_key, p);
+    }
+    if (data && data.message) { return data.message; }
+    return t(fallbackKey, params);
+  }
+
+  /* 还原按钮原文时走 data-i18n 键，切语言后不会串语言。 */
+  function flash(btn, text) {
+    var key = btn.getAttribute('data-i18n');
+    var fallback = btn.getAttribute('data-label') || t('common.copy');
+    btn.textContent = text;
+    btn.disabled = true;
+    window.setTimeout(function () {
+      btn.textContent = key ? t(key) : fallback;
+      btn.disabled = false;
+    }, 1500);
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-copy]'), function (btn) {
+    btn.addEventListener('click', function () {
+      var target = document.getElementById(btn.getAttribute('data-copy'));
+      if (!target) return;
+      copyText(target.textContent.trim()).then(function (ok) {
+        flash(btn, ok ? t('common.copied') : t('common.copyManual'));
+      });
+    });
+  });
+
+  /* ---------------------------------------------------------- 重命名 -- */
+
+  var renameBox = document.getElementById('renameBox');
+  var renameLocked = document.getElementById('renameLocked');
+  var renameInput = document.getElementById('renameInput');
+  var renameCount = document.getElementById('renameCount');
+  var renamePreview = document.getElementById('renamePreview');
+  var renameBtn = document.getElementById('renameBtn');
+  var renameMsg = document.getElementById('renameMsg');
+  var renameOk = document.getElementById('renameOk');
+  var nameBox = document.getElementById('nameBox');
+  var cmdBox = document.getElementById('cmdBox');
+  var playerName = (document.getElementById('playerName') || {}).textContent || '';
+  var canRename = ((document.getElementById('canRename') || {}).textContent || '').trim() === '1';
+
+  var RENAME_MAX = 32;
+
+  /* 当前错误提示（键 + 插值），切语言时重画 */
+  var renameErrState = null;
+
+  function csrfToken() {
+    var m = document.cookie.match(/(?:^|;\s*)imgup_csrf=([^;]*)/);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  function setRenameMsg(el, text) {
+    el.textContent = text || '';
+    el.classList.toggle('hidden', !text);
+  }
+
+  /* data 为服务端返回体（本地校验错误传 null），key 为兜底键。 */
+  function showRenameError(data, key, params) {
+    if (!data && !key) {
+      renameErrState = null;
+      setRenameMsg(renameMsg, '');
+      return;
+    }
+    renameErrState = { data: data || null, key: key || '', params: params || null };
+    setRenameMsg(renameMsg, serverText(renameErrState.data, renameErrState.key, renameErrState.params));
+  }
+
+  /* 与服务端 sanitize_nickname 同一套规则，保证预览所见即所得 */
+  function sanitizeNickname(text, max) {
+    var out = String(text || '')
+      .replace(/[\\/:*?"<>|\x00-\x1f]/g, '-')
+      .replace(/-{2,}/g, '-')
+      .replace(/^[ .\-_]+|[ .\-_]+$$/g, '');
+    return out.slice(0, max).replace(/[ .\-_]+$$/g, '');
+  }
+
+  function currentExt() {
+    var n = (nameBox ? nameBox.textContent : '') || '';
+    var dot = n.lastIndexOf('.');
+    return dot > 0 ? n.slice(dot + 1).toLowerCase() : 'png';
+  }
+
+  function updateRenamePreview() {
+    if (!renamePreview) return;
+    var nick = sanitizeNickname(renameInput.value, RENAME_MAX) || '原文件名';
+    renamePreview.textContent = (playerName || '玩家') + '-' + nick + '.' + currentExt();
+  }
+
+  if (renameBox) {
+    if (!canRename) {
+      renameBox.classList.add('hidden');
+      if (renameLocked) renameLocked.classList.remove('hidden');
+    } else {
+      renameBox.classList.remove('hidden');
+      if (renameLocked) renameLocked.classList.add('hidden');
+
+      var initial = (document.getElementById('nicknameValue') || {}).textContent || '';
+      renameInput.value = sanitizeNickname(initial, RENAME_MAX);
+      renameCount.textContent = renameInput.value.length + ' / ' + RENAME_MAX;
+      updateRenamePreview();
+
+      renameInput.addEventListener('input', function () {
+        renameCount.textContent = renameInput.value.length + ' / ' + RENAME_MAX;
+        showRenameError(null, '');
+        setRenameMsg(renameOk, '');
+        updateRenamePreview();
+      });
+
+      renameInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); doRename(); }
+      });
+
+      renameBtn.addEventListener('click', doRename);
+    }
+  }
+
+  function doRename() {
+    var nick = sanitizeNickname(renameInput.value, RENAME_MAX);
+    showRenameError(null, '');
+    setRenameMsg(renameOk, '');
+
+    if (!nick) {
+      showRenameError(null, 'result.renameEmpty');
+      renameInput.focus();
+      return;
+    }
+
+    renameBtn.disabled = true;
+    renameBtn.textContent = t('result.renameSaving');
+
+    fetch('/api/rename', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-Token': csrfToken()
+      },
+      body: JSON.stringify({ name: (nameBox.textContent || '').trim(), nickname: nick })
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (d) {
+        return { status: res.status, data: d || {} };
+      });
+    }).then(function (r) {
+      if (r.status >= 200 && r.status < 300 && r.data.name) {
+        // 刷新成新名字的地址，页面上所有地方（预览、指令）一起更新
+        location.replace('/result?name=' + encodeURIComponent(r.data.name) + '&renamed=1');
+        return;
+      }
+      if (r.status === 409) {
+        showRenameError(null, 'result.renameTaken');
+      } else if (r.status === 403) {
+        showRenameError(null, 'common.badCsrf');
+      } else if (r.status === 400) {
+        showRenameError(r.data, 'result.renameBadName');
+      } else {
+        showRenameError(r.data, 'result.renameFailed', { status: r.status });
+      }
+      renameBtn.disabled = false;
+      renameBtn.textContent = t('result.renameSave');
+    }).catch(function () {
+      showRenameError(null, 'result.renameNetError');
+      renameBtn.disabled = false;
+      renameBtn.textContent = t('result.renameSave');
+    });
+  }
+
+  /* 跟着语言开关重画：这些文案是 JS 运行时写的，切语言时要刷新一遍 */
+  window.addEventListener('imgup:languagechange', function () {
+    if (renamedText) { renamedText.classList.toggle('hidden', renamedIsEmpty); }
+    if (statusText && !statusText.textContent.trim()) {
+      statusText.textContent = t('result.statusDefault');
+    }
+    if (renameErrState) {
+      setRenameMsg(renameMsg, serverText(renameErrState.data, renameErrState.key, renameErrState.params));
+    }
+    if (canRename) { updateRenamePreview(); }
+  });
+})();
+</script>
+
+</body>
+</html>

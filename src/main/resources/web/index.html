@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title data-i18n="index.title">$site_title</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/i18n.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true">🖼</span>
+      <span class="brand-text" data-i18n="common.brand">$site_brand</span>
+    </a>
+    <nav class="topnav"><a href="/admin/" data-i18n="common.adminEntry">$site_nav_admin</a></nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="page-head">
+    <h1 class="page-title"><span class="icon" aria-hidden="true">📮</span><span data-i18n="index.heading">$site_home_heading</span></h1>
+    <p class="lede"><span data-i18n="index.lede">$site_home_lede</span><code>/imgup 你的上传码</code><span data-i18n="index.ledeSuffix"> 完成确认，就可以上传图片了。</span></p>
+  </div>
+
+  <div class="alert alert-error" id="serverError" role="alert">$error</div>
+
+  <section class="panel">
+    <h2 class="panel-title" data-i18n="index.step1Title">$site_home_step1_title</h2>
+    <p class="muted" id="getHint"><span data-i18n="index.getHint">点下面的按钮生成上传码，然后在游戏聊天框里输入 </span><code>/imgup 上传码</code><span data-i18n="index.getHintSuffix">。上传码 5 分钟内有效，网页会自动检测你的确认。</span></p>
+
+    <button class="btn btn-primary btn-block btn-lg" type="button" id="newCodeBtn" data-i18n="index.newCode">$site_home_button</button>
+
+    <div class="hidden" id="codeArea">
+      <p class="sub-title" data-i18n="index.yourCode">你的上传码（点击可复制）</p>
+      <button class="code-box" type="button" id="codeBox" data-i18n-attr="title:index.codeBoxTitle" title="点击复制上传码">--------</button>
+      <span class="field-hint" id="copyState" role="status"></span>
+      <p class="progress-text" id="countdown"></p>
+      <p class="muted" id="pollState"></p>
+      <div class="alert alert-ok hidden" id="claimedMsg" role="status"></div>
+      <div class="alert alert-error hidden" id="codeMsg" role="alert"></div>
+      <p class="panel-note"><span data-i18n="index.gameCommand">在游戏里输入的指令是：</span><code id="gameHint">/imgup --------</code></p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title" data-i18n="index.step2Title">$site_home_step2_title</h2>
+    <p class="muted" data-i18n="index.step2Hint">如果自动检测没有反应，可以在游戏里确认之后，把同一个上传码填到这里手动进入。</p>
+
+    <form id="claimForm" novalidate>
+      <div class="field">
+        <label for="codeInput" data-i18n="index.codeLabel">8 位上传码</label>
+        <input class="input input-code" type="text" id="codeInput" name="code" maxlength="8"
+               inputmode="text" autocomplete="one-time-code" autocapitalize="characters"
+               autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="ABCD2345" required>
+        <span class="field-hint" data-i18n="index.codeHint">不区分大小写，会自动去掉空格；不含容易看错的 I、O、0、1。</span>
+      </div>
+
+      <div class="alert alert-error hidden" id="claimMsg" role="alert"></div>
+
+      <button class="btn btn-primary btn-block" type="submit" id="claimBtn" data-i18n="index.claimBtn">我已确认，进入上传</button>
+    </form>
+  </section>
+
+  <p class="muted" data-i18n="index.privacyNote">上传码只用于证明「这个浏览器和这个游戏 ID 是同一个人」，不会要求你输入游戏密码。</p>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p data-i18n="common.footerTagline">$site_footer_note</p>
+    <p><span data-i18n="common.footerPermBefore">$site_footer_permission</span><code>images.command.create</code><span data-i18n="common.footerPermAfter">$site_footer_permission_suffix</span></p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var t = window.IMGUP_I18N.t;
+
+  var serverError = document.getElementById('serverError');
+  if (serverError && !serverError.textContent.trim()) { serverError.classList.add('hidden'); }
+
+  var POLL_MS = 2000;
+  var DEFAULT_TTL = 300;
+
+  var newCodeBtn = document.getElementById('newCodeBtn');
+  var codeArea = document.getElementById('codeArea');
+  var codeBox = document.getElementById('codeBox');
+  var copyState = document.getElementById('copyState');
+  var countdown = document.getElementById('countdown');
+  var pollState = document.getElementById('pollState');
+  var claimedMsg = document.getElementById('claimedMsg');
+  var codeMsg = document.getElementById('codeMsg');
+  var gameHint = document.getElementById('gameHint');
+
+  var claimForm = document.getElementById('claimForm');
+  var codeInput = document.getElementById('codeInput');
+  var claimBtn = document.getElementById('claimBtn');
+  var claimMsg = document.getElementById('claimMsg');
+
+  var pollTimer = 0;
+  var tickTimer = 0;
+  var redirectTimer = 0;
+  var deadline = 0;
+  var currentCode = '';
+  var polling = false;
+
+  /* ---------------------------------------------------------- 小工具 -- */
+
+  function csrfToken() {
+    var m = document.cookie.match(/(?:^|;\s*)imgup_csrf=([^;]*)/);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  function readJSON(res) {
+    return res.json().catch(function () { return {}; });
+  }
+
+  /* 服务端可能带 message_key（语言中立的键）+ message_params；拿不到就回退它给的中文。 */
+  function serverText(data, fallbackKey, params) {
+    if (data && data.message_key) {
+      var p = data.message_params || params || null;
+      return t(data.message_key, p);
+    }
+    if (data && data.message) { return data.message; }
+    return t(fallbackKey, params);
+  }
+
+  function setMsg(el, text, kind) {
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('alert-ok', kind === 'ok');
+    el.classList.toggle('alert-info', kind === 'info');
+    el.classList.toggle('alert-error', kind !== 'ok' && kind !== 'info');
+    el.classList.toggle('hidden', !text);
+  }
+
+  function fmtClock(sec) {
+    var s = Math.max(0, Math.floor(sec));
+    var m = Math.floor(s / 60);
+    var r = s % 60;
+    return String(m).padStart(2, '0') + ':' + String(r).padStart(2, '0');
+  }
+
+  function legacyCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', 'readonly');
+    ta.className = 'copy-sink';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  function copyText(text) {
+    return new Promise(function (resolve) {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(
+          function () { resolve(true); },
+          function () { resolve(legacyCopy(text)); }
+        );
+      } else {
+        resolve(legacyCopy(text));
+      }
+    });
+  }
+
+  /* ------------------------------------------------------ 计时与轮询 -- */
+
+  function stopTimers() {
+    polling = false;
+    window.clearTimeout(pollTimer);
+    window.clearTimeout(tickTimer);
+  }
+
+  function tick() {
+    window.clearTimeout(tickTimer);
+    var left = Math.ceil((deadline - Date.now()) / 1000);
+    if (left <= 0) {
+      countdown.textContent = t('index.expired');
+      stopTimers();
+      pollState.textContent = t('index.codeExpired');
+      setMsg(codeMsg, t('index.codeExpiredRetry'));
+      codeBox.disabled = true;
+      return;
+    }
+    countdown.textContent = t('index.countdown', { time: fmtClock(left) });
+    tickTimer = window.setTimeout(tick, 1000);
+  }
+
+  function schedulePoll(delay) {
+    window.clearTimeout(pollTimer);
+    polling = true;
+    pollTimer = window.setTimeout(poll, delay);
+  }
+
+  function poll() {
+    if (!polling) return;
+    if (document.hidden) { schedulePoll(POLL_MS); return; }
+
+    fetch('/api/codestatus', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (res) {
+        return readJSON(res).then(function (d) { return { status: res.status, ok: res.ok, data: d }; });
+      })
+      .then(function (r) {
+        if (!polling) return;
+
+        if (r.status === 401) {
+          stopTimers();
+          setMsg(codeMsg, t('common.sessionExpired'));
+          codeBox.disabled = true;
+          return;
+        }
+        if (!r.ok || !r.data || r.data.ok === false) {
+          stopTimers();
+          setMsg(codeMsg, serverText(r.data, 'index.pollFailed'));
+          codeBox.disabled = true;
+          return;
+        }
+
+        var d = r.data;
+        if (d.claimed) {
+          stopTimers();
+          window.clearTimeout(redirectTimer);
+          var who = d.player ? String(d.player) : '';
+          pollState.textContent = who
+            ? t('index.claimedWho', { player: who })
+            : t('index.claimed');
+          setMsg(claimedMsg, who
+            ? t('index.claimedRedirectWho', { player: who })
+            : t('index.claimedRedirect'), 'ok');
+          redirectTimer = window.setTimeout(function () { location.href = '/upload'; }, 1000);
+          return;
+        }
+
+        pollState.textContent = t('index.waiting');
+        schedulePoll(POLL_MS);
+      })
+      .catch(function () {
+        if (!polling) return;
+        pollState.textContent = t('index.netUnstable');
+        schedulePoll(POLL_MS);
+      });
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && polling) { schedulePoll(0); }
+  });
+
+  /* -------------------------------------------------------- 获取新码 -- */
+
+  function startSession(code, ttl) {
+    currentCode = String(code);
+    codeBox.textContent = currentCode;
+    codeBox.disabled = false;
+    codeBox.title = t('index.codeBoxTitle');
+    gameHint.textContent = '/imgup ' + currentCode;
+    copyState.textContent = '';
+    setMsg(codeMsg, '');
+    setMsg(claimedMsg, '');
+    pollState.textContent = t('index.waiting');
+
+    var life = (typeof ttl === 'number' && isFinite(ttl) && ttl > 0) ? ttl : DEFAULT_TTL;
+    deadline = Date.now() + life * 1000;
+    showEl(codeArea);
+    tick();
+    schedulePoll(0);
+  }
+
+  function showEl(el) { if (el) el.classList.remove('hidden'); }
+
+  function requestCode() {
+    stopTimers();
+    window.clearTimeout(redirectTimer);
+    setMsg(codeMsg, '');
+    setMsg(claimedMsg, '');
+    copyState.textContent = '';
+    showEl(codeArea);
+    codeBox.textContent = '--------';
+    codeBox.disabled = true;
+    gameHint.textContent = '/imgup --------';
+    countdown.textContent = t('index.generating');
+    pollState.textContent = '';
+
+    newCodeBtn.disabled = true;
+    newCodeBtn.textContent = t('index.generating');
+
+    fetch('/api/newcode', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json' }
+    })
+      .then(function (res) {
+        return readJSON(res).then(function (d) { return { status: res.status, ok: res.ok, data: d }; });
+      })
+      .then(function (r) {
+        newCodeBtn.disabled = false;
+        newCodeBtn.textContent = t('index.newCodeAgain');
+
+        if (!r.ok || !r.data || r.data.ok === false || !r.data.code) {
+          countdown.textContent = '';
+          codeBox.textContent = '-- -- -- --';
+          setMsg(codeMsg, serverText(r.data, 'index.genFailed', { status: r.status }));
+          return;
+        }
+        startSession(r.data.code, r.data.expires_in);
+      })
+      .catch(function () {
+        newCodeBtn.disabled = false;
+        newCodeBtn.textContent = t('index.newCodeAgain');
+        countdown.textContent = '';
+        codeBox.textContent = '-- -- -- --';
+        setMsg(codeMsg, t('common.netError'));
+      });
+  }
+
+  /* 跟着语言开关重画：这些文案是 JS 运行时写的，切语言时要刷新一遍 */
+  var lastCode = { text: '', kind: '' };
+  var lastClaim = '';
+  var lastPoll = '';
+  window.addEventListener('imgup:languagechange', function () {
+    if (currentCode) {
+      countdown.textContent = deadline > Date.now()
+        ? t('index.countdown', { time: fmtClock((deadline - Date.now()) / 1000) })
+        : t('index.expired');
+      pollState.textContent = lastPoll;
+    }
+    if (lastCode.text) { setMsg(codeMsg, lastCode.text, lastCode.kind); }
+    if (lastClaim) { setMsg(claimMsg, lastClaim); }
+    setMsg(claimedMsg, claimedMsg.classList.contains('hidden') ? '' : claimedMsg.textContent, 'ok');
+  });
+
+  newCodeBtn.addEventListener('click', requestCode);
+
+  codeBox.addEventListener('click', function () {
+    if (!currentCode) return;
+    copyText(currentCode).then(function (ok) {
+      copyState.textContent = ok
+        ? t('index.copiedCode', { code: currentCode })
+        : t('index.copyFailed');
+    });
+  });
+
+  /* ---------------------------------------------------- 手动 claim 兜底 -- */
+
+  function normalize(value) {
+    return String(value || '').toUpperCase().replace(/\s+/g, '');
+  }
+
+  codeInput.addEventListener('input', function () {
+    var v = normalize(codeInput.value);
+    if (v !== codeInput.value) { codeInput.value = v; }
+  });
+
+  claimForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var code = normalize(codeInput.value);
+    codeInput.value = code;
+
+    if (code.length !== 8) {
+      setMsg(claimMsg, t('index.badCodeLength'));
+      codeInput.focus();
+      return;
+    }
+
+    claimBtn.disabled = true;
+    claimBtn.textContent = t('index.claiming');
+    setMsg(claimMsg, '');
+
+    fetch('/api/claim', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-Token': csrfToken()
+      },
+      body: JSON.stringify({ code: code })
+    })
+      .then(function (res) {
+        return readJSON(res).then(function (d) { return { status: res.status, ok: res.ok, data: d }; });
+      })
+      .then(function (r) {
+        if (r.ok && r.data && r.data.ok) {
+          location.href = '/upload';
+          return;
+        }
+        var msg = serverText(r.data, 'index.claimFailed');
+        if (r.status === 403) { msg = t('common.badCsrf'); }
+        setMsg(claimMsg, msg);
+        claimBtn.disabled = false;
+        claimBtn.textContent = t('index.claimBtn');
+      })
+      .catch(function () {
+        setMsg(claimMsg, t('common.netError'));
+        claimBtn.disabled = false;
+        claimBtn.textContent = t('index.claimBtn');
+      });
+  });
+})();
+</script>
+
+</body>
+</html>

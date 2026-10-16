@@ -14,7 +14,7 @@ API_VERSION="26.3.build.194-stable"
 CACHE_ROOT="${IMGUP_BUILD_CACHE:-$HERE/.build-cache}"
 DEPS_DIR="$CACHE_ROOT/deps"
 OUT_DIR="$HERE/target"
-JAR_NAME="ImgUp-1.0.0.jar"
+JAR_NAME="ImgUp-2.0.0.jar"
 JAVAC_RELEASE="${IMGUP_JAVA_RELEASE:-21}"
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "缺少 $1，请先安装" >&2; exit 1; }; }
@@ -83,7 +83,13 @@ with zipfile.ZipFile(jar) as zf:
     names = zf.namelist()
     for required in ("plugin.yml", "config.yml",
                      "com/huhumc/imgup/ImgUpPlugin.class",
-                     "com/huhumc/imgup/ImgUpCommand.class"):
+                     "com/huhumc/imgup/ImgUpCommand.class",
+                     "com/huhumc/imgup/WebServer.class",
+                     "com/huhumc/imgup/UploadStore.class",
+                     "com/huhumc/imgup/ImageTools.class",
+                     # 网页资源必须打进去，否则插件起来了也没有页面
+                     "web/index.html", "web/upload.html", "web/result.html",
+                     "web/app.css", "web/i18n.js"):
         if required not in names:
             sys.exit("产物里缺少 " + required)
     with zf.open("plugin.yml") as fh:

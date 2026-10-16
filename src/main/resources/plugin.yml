@@ -1,16 +1,19 @@
 name: ImgUp
-version: 1.0.0
+version: 2.0.0
 main: com.huhumc.imgup.ImgUpPlugin
 api-version: '1.21'
 authors: [ huhumc ]
-description: 图片上传站的服务端一半：玩家用 /imgup <上传码> 完成绑定
+description: 图片上传站：插件自带网站，玩家在网页上传图片、在游戏里贴海报
 website: https://huhumc.top
 commands:
   imgup:
-    description: 确认海报上传码 / 服务端管理接口
-    usage: /imgup <上传码>
+    description: 确认上传码 / 查看和审核玩家上传的图片
+    usage: /imgup <上传码> | list | ok <文件名> | no <文件名> [原因] | del <文件名> | reload
     aliases: [ imgup ]
 permissions:
   imgup.use:
-    description: 允许使用 /imgup 确认上传码
+    description: 允许用 /imgup <上传码> 确认上传
     default: true
+  imgup.admin:
+    description: 允许查看待审核列表、通过 / 拒绝 / 删除玩家的图片
+    default: op

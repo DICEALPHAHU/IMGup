@@ -573,6 +573,21 @@ public final class WebServer {
         values.put("auto_publish", config.autoPublish ? "1" : "");
         values.put("max_bytes_mb", String.valueOf(config.maxUploadBytes / (1024 * 1024)));
 
+        // ---- 网站元素：全部来自 config.yml 的 site.* ----
+        // 中文值直接填进 HTML（就是默认显示的样子），英文那套交给前端翻译表，
+        // 所以站长改 config.yml 一句话，中英两边一起变，不用碰 HTML。
+        for (Map.Entry<String, String> entry : config.siteZh.entrySet()) {
+            String key = entry.getKey();
+            if (!key.startsWith("__")) {
+                values.put("site_" + key, Texts.escapeHtml(entry.getValue()));
+            }
+        }
+        values.put("site_show_manual_claim", config.showManualClaim ? "1" : "");
+        values.put("site_allow_rename", config.allowRename ? "1" : "");
+        values.put("site_show_copy_buttons", config.showCopyButtons ? "1" : "");
+        // 这个 JSON 会进 <script> 里，必须把 </script> 和引号都挡住
+        values.put("site_english_json", englishOverridesJson());
+
         if ("result".equals(page)) {
             String name = queryParam(exchange, "name");
             UploadStore.Item item = Texts.isSafeFileName(name, config.maxNameLength)
@@ -625,7 +640,16 @@ public final class WebServer {
                 }
             }
         }
-        return sendHtml(exchange, render(html, values));
+        String output = render(html, values);
+        // 把 config.yml 里的英文文案注入成全局对象，i18n.js 启动时合并进字典。
+        // 放在 </head> 之前，保证引擎一读就能拿到。
+        String injection = "<script>window.IMGUP_SITE_EN="
+                + values.getOrDefault("site_english_json", "{}") + ";</script>\n";
+        int head = output.indexOf("</head>");
+        if (head >= 0) {
+            output = output.substring(0, head) + injection + output.substring(head);
+        }
+        return sendHtml(exchange, output);
     }
 
     /**
@@ -889,6 +913,26 @@ public final class WebServer {
             }
             return true;
         }
+    }
+
+    /**
+     * 把 config.yml 里的英文文案包成前端翻译表的覆盖项。
+     *
+     * 注入到页面的 &lt;script&gt; 里，i18n.js 启动时读 window.IMGUP_SITE_EN。
+     * 这样「网站元素」的唯一来源就是 config.yml，模板里不用写死任何一句文案。
+     */
+    private String englishOverridesJson() {
+        Map<String, Object> overrides = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : config.siteEn.entrySet()) {
+            String key = entry.getKey();
+            if (key.startsWith("__")) {
+                continue;
+            }
+            overrides.put("site." + key, entry.getValue());
+        }
+        // 放进 <script> 里，必须防住 </script> —— 否则英文文案里出现这几个字符
+        // 就会提前结束脚本块。JSON 里 \u003c 是合法的，浏览器会还原成 <
+        return Json.write(overrides).replace("<", "\\u003c");
     }
 
     /** 供后台用：把所有待审核的图列出来。 */

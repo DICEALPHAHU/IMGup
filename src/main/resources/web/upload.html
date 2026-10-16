@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title data-i18n="upload.title">$site_title</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/i18n.js"></script>
+</head>
+<body>
+<span class="visually-hidden" id="playerName">$player</span>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true">🖼</span>
+      <span class="brand-text" data-i18n="common.brand">$site_brand</span>
+    </a>
+    <nav class="topnav"><a href="/" data-i18n="common.backHome">重新验证</a></nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="page-head">
+    <h1 class="page-title"><span class="icon" aria-hidden="true">⬆️</span><span data-i18n="upload.heading">$site_upload_heading</span></h1>
+    <p class="lede" data-i18n="upload.lede">$site_upload_lede</p>
+  </div>
+
+  <div class="verify-bar">
+    <span aria-hidden="true">✅</span>
+    <span>已通过验证：<strong>$player</strong></span>
+  </div>
+
+  <form id="uploadForm" novalidate>
+
+    <section class="panel">
+      <h2 class="panel-title" data-i18n="upload.chooseTitle">选择图片</h2>
+
+      <label class="drop" id="drop" for="fileInput">
+        <span class="drop-icon" aria-hidden="true">🖼️</span>
+        <span class="drop-title" id="dropTitle" data-i18n="upload.dropTitle">点击选择图片</span>
+        <span class="drop-hint" data-i18n="upload.dropHint">也可以把图片拖到这里，或直接粘贴截图</span>
+        <input class="visually-hidden" type="file" id="fileInput" name="file" accept="image/png,image/jpeg">
+      </label>
+
+      <div class="preview hidden" id="preview">
+        <img id="previewImg" alt="待上传图片预览">
+        <div class="preview-info">
+          <p class="mono" id="fileName">—</p>
+          <p class="muted" id="fileSize">—</p>
+          <p class="muted" data-i18n="upload.pickAgain">点击上面的区域可以重新选择图片。</p>
+        </div>
+      </div>
+
+      <p class="panel-note" data-i18n="upload.limits">限制：PNG / JPG，单张不超过 5MB，会自动缩放。</p>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-title" data-i18n="upload.nicknameTitle">$site_upload_nickname_title</h2>
+
+      <div class="field">
+        <label for="nickname"><span data-i18n="upload.nicknameLabel">昵称</span><span class="counter" id="nicknameCount">0 / 32</span></label>
+        <input class="input" type="text" id="nickname" name="nickname" maxlength="32"
+               placeholder="例如：我的海报" autocomplete="off" enterkeyhint="done"
+               data-i18n-attr="placeholder:upload.nicknamePlaceholder">
+        <span class="field-hint" data-i18n="upload.nicknameHint">选好图片后会自动填成原文件名，你可以直接改成想要的名字。</span>
+      </div>
+
+      <div class="field">
+        <label data-i18n="upload.namePreviewLabel">游戏内的文件名</label>
+        <p class="mono name-preview" id="namePreview">—</p>
+        <span class="field-hint"><span data-i18n="upload.namePreviewHint">由「玩家名-昵称」自动生成；如果已经有同名的图，会自动加 </span><code>-2</code><span>。
+          上传后还可以再改。</span></span>
+      </div>
+
+      <div class="alert alert-error hidden" id="formMsg" role="alert"></div>
+
+      <div class="progress hidden" id="progress">
+        <div class="progress-track"><span class="progress-bar" id="progressBar"></span></div>
+        <span class="progress-text" id="progressText" data-i18n="upload.progressPrep">准备上传…</span>
+      </div>
+
+      <button class="btn btn-primary btn-block btn-lg" type="submit" id="submitBtn" disabled data-i18n="upload.submit">$site_upload_button</button>
+
+      <p class="panel-note" data-i18n="upload.note">服务端会再次校验图片格式与大小，并按站长设置决定是否需要人工审核。</p>
+    </section>
+
+  </form>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p data-i18n="common.footerTagline">$site_footer_note</p>
+    <p>上传成功后请复制游戏内指令 <code>/image create 文件名</code>，手持地图按提示右键放置。</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var t = window.IMGUP_I18N.t;
+
+  var NICKNAME_MAX = 32;
+  var MAX_BYTES = 5242880;
+
+  var drop = document.getElementById('drop');
+  var dropTitle = document.getElementById('dropTitle');
+  var fileInput = document.getElementById('fileInput');
+  var preview = document.getElementById('preview');
+  var previewImg = document.getElementById('previewImg');
+  var fileName = document.getElementById('fileName');
+  var fileSize = document.getElementById('fileSize');
+  var nickname = document.getElementById('nickname');
+  var nicknameCount = document.getElementById('nicknameCount');
+  var namePreview = document.getElementById('namePreview');
+  var playerName = (document.getElementById('playerName') || {}).textContent || '';
+  var formMsg = document.getElementById('formMsg');
+  var progress = document.getElementById('progress');
+  var progressBar = document.getElementById('progressBar');
+  var progressText = document.getElementById('progressText');
+  var submitBtn = document.getElementById('submitBtn');
+  var form = document.getElementById('uploadForm');
+
+  var current = null;
+  var objectUrl = '';
+  var uploading = false;
+
+  /* 切语言时要重画的运行时文案：错误提示和进度文案都记成「键 + 插值」。 */
+  var errState = null;
+  var progressKey = 'upload.progressPrep';
+  var progressParams = null;
+
+  /* ---------------------------------------------------------- 小工具 -- */
+
+  function csrfToken() {
+    var m = document.cookie.match(/(?:^|;\s*)imgup_csrf=([^;]*)/);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  function setMsg(text) {
+    formMsg.textContent = text || '';
+    formMsg.classList.toggle('hidden', !text);
+  }
+
+  /* 服务端可能带 message_key（语言中立的键）+ message_params；拿不到就回退它给的中文。 */
+  function serverText(data, fallbackKey, params) {
+    if (data && data.message_key) {
+      var p = data.message_params || params || null;
+      return t(data.message_key, p);
+    }
+    if (data && data.message) { return data.message; }
+    return t(fallbackKey, params);
+  }
+
+  /* data 为服务端返回体（本地校验错误传 null），key 为兜底键。 */
+  function showError(data, key, params) {
+    if (!data && !key) {
+      errState = null;
+      setMsg('');
+      return;
+    }
+    errState = { data: data || null, key: key || '', params: params || null };
+    setMsg(serverText(errState.data, errState.key, errState.params));
+  }
+
+  function fmtBytes(n) {
+    if (typeof n !== 'number' || !isFinite(n) || n < 0) return '—';
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1048576).toFixed(2) + ' MB';
+  }
+
+  /* key 省略时用 upload.progress（带 {pct} 插值）。 */
+  function setProgress(pct, key, params) {
+    var p = Math.max(0, Math.min(100, Math.round(pct)));
+    progressKey = key || 'upload.progress';
+    progressParams = params || { pct: p };
+    progressBar.style.width = p + '%';
+    progressText.textContent = t(progressKey, progressParams);
+  }
+
+  /* 客户端预检：真正的把关仍在服务端，这里只是早点给出提示 */
+  function detectKind(file) {
+    var mime = (file.type || '').toLowerCase();
+    if (mime === 'image/png') return 'PNG';
+    if (mime === 'image/jpeg' || mime === 'image/jpg') return 'JPG';
+    var name = (file.name || '').toLowerCase();
+    var dot = name.lastIndexOf('.');
+    var ext = dot >= 0 ? name.slice(dot) : '';
+    if (ext === '.png') return 'PNG';
+    if (ext === '.jpg' || ext === '.jpeg') return 'JPG';
+    return '';
+  }
+
+  /* 只返回「键 + 插值参数」，不返回写死的中文，方便切语言时重画 */
+  function validate(file) {
+    if (!file) return { key: 'upload.errNoFile' };
+    if (!detectKind(file)) {
+      return { key: 'upload.errType', params: { type: file.type || file.name || '未知类型' } };
+    }
+    if (file.size <= 0) return { key: 'upload.errEmpty' };
+    if (file.size > MAX_BYTES) {
+      return { key: 'upload.errTooBig', params: { size: fmtBytes(file.size) } };
+    }
+    return null;
+  }
+
+  /* ------------------------------------------------------ 选择与预览 -- */
+
+  function showFile(file) {
+    var err = validate(file);
+    if (err) {
+      current = null;
+      submitBtn.disabled = true;
+      showError(null, err.key, err.params);
+      return;
+    }
+
+    current = file;
+    showError(null, '');
+
+    if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = ''; }
+    try { objectUrl = URL.createObjectURL(file); } catch (e) { objectUrl = ''; }
+    if (objectUrl) { previewImg.src = objectUrl; }
+
+    fileName.textContent = file.name || '(未命名)';
+    fileSize.textContent = fmtBytes(file.size) + ' · ' + detectKind(file) + ' · 会自动缩放';
+    dropTitle.textContent = t('upload.dropTitleChosen');
+    preview.classList.remove('hidden');
+    submitBtn.disabled = false;
+
+    // 默认昵称 = 上传文件名去掉扩展名。
+    // 只在玩家还没自己改过（或者之前是自动填的）时才覆盖，不抢玩家输入的内容。
+    var suggested = stripExtension(file.name || '');
+    if (suggested && (!nicknameTouched || nickname.value === lastSuggested)) {
+      nickname.value = suggested.slice(0, NICKNAME_MAX);
+      lastSuggested = nickname.value;
+      nicknameTouched = false;
+    }
+    updateNicknameCount();
+    updateNamePreview();
+  }
+
+  /* 去掉扩展名："a.b.png" -> "a.b"，没扩展名就原样返回 */
+  function stripExtension(name) {
+    var base = String(name || '').split(/[\\/]/).pop();
+    var dot = base.lastIndexOf('.');
+    return (dot > 0 ? base.slice(0, dot) : base).trim();
+  }
+
+  fileInput.addEventListener('change', function () {
+    if (fileInput.files && fileInput.files.length) { showFile(fileInput.files[0]); }
+  });
+
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      drop.classList.add('is-drag');
+    });
+  });
+
+  ['dragleave', 'dragend', 'drop'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      drop.classList.remove('is-drag');
+    });
+  });
+
+  drop.addEventListener('drop', function (e) {
+    var dt = e.dataTransfer;
+    if (dt && dt.files && dt.files.length) { showFile(dt.files[0]); }
+  });
+
+  document.addEventListener('paste', function (e) {
+    var tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    var items = (e.clipboardData && e.clipboardData.items) || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file' && String(items[i].type).indexOf('image/') === 0) {
+        var f = items[i].getAsFile();
+        if (f) {
+          e.preventDefault();
+          showFile(f);
+          return;
+        }
+      }
+    }
+  });
+
+  /* -------------------------------------------- 昵称与最终文件名预览 -- */
+
+  function updateNicknameCount() {
+    nicknameCount.textContent = nickname.value.length + ' / ' + NICKNAME_MAX;
+  }
+
+  /* 与服务端 sanitize_nickname 保持同一套规则，让预览所见即所得。
+     真正的把关仍以服务端为准。 */
+  function sanitizeNickname(text, max) {
+    var out = String(text || '')
+      .replace(/[\\/:*?"<>|\x00-\x1f]/g, '-')
+      .replace(/-{2,}/g, '-')
+      .replace(/^[ .\-_]+|[ .\-_]+$$/g, '');
+    return out.slice(0, max).replace(/[ .\-_]+$$/g, '');
+  }
+
+  function updateNamePreview() {
+    var nick = sanitizeNickname(nickname.value, NICKNAME_MAX);
+    var who = playerName || '玩家';
+    if (!current) {
+      namePreview.textContent = t('upload.namePreviewNone');
+      return;
+    }
+    if (!nick) { nick = '原文件名'; }
+    namePreview.textContent = who + '-' + nick + '.' + extOf(current);
+  }
+
+  function extOf(file) {
+    return detectKind(file) === 'JPG' ? 'jpg' : 'png';
+  }
+
+  var nicknameTouched = false;
+  var lastSuggested = '';
+  nickname.addEventListener('input', function () {
+    nicknameTouched = true;
+    updateNicknameCount();
+    updateNamePreview();
+  });
+  updateNicknameCount();
+  updateNamePreview();
+
+  /* ------------------------------------------------------------ 上传 -- */
+
+  function resetForm(data, key, params) {
+    uploading = false;
+    submitBtn.disabled = !current;
+    submitBtn.textContent = t('upload.submit');
+    fileInput.disabled = false;
+    nickname.readOnly = false;
+    progress.classList.add('hidden');
+    setProgress(0, '');
+    showError(data, key, params);
+  }
+
+  function doUpload() {
+    var fd = new FormData();
+    fd.append('file', current);
+    fd.append('nickname', (nickname.value || '').trim());
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload', true);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader('X-CSRF-Token', csrfToken());
+    xhr.setRequestHeader('Accept', 'application/json');
+
+    uploading = true;
+    submitBtn.disabled = true;
+    submitBtn.textContent = t('upload.uploading');
+    fileInput.disabled = true;
+    nickname.readOnly = true;
+    showError(null, '');
+    progress.classList.remove('hidden');
+    setProgress(0, 'upload.progressStart');
+
+    xhr.upload.onprogress = function (ev) {
+      if (ev.lengthComputable && ev.total > 0) {
+        var pct = Math.round((ev.loaded / ev.total) * 100);
+        setProgress(pct);
+      }
+    };
+    xhr.upload.onload = function () {
+      setProgress(100, 'upload.progressProcessing');
+    };
+    xhr.onload = function () {
+      var data = {};
+      try { data = JSON.parse(xhr.responseText || '{}') || {}; } catch (e) { data = {}; }
+
+      if (xhr.status >= 200 && xhr.status < 300 && data.name) {
+        setProgress(100, 'upload.progressDone');
+        location.href = '/result?name=' + encodeURIComponent(data.name);
+        return;
+      }
+
+      var key = 'upload.errFailed';
+      var params = { status: xhr.status };
+      if (xhr.status === 403) { key = 'common.badCsrf'; params = null; }
+      if (xhr.status === 401) { key = 'upload.errExpired'; params = null; }
+      if (xhr.status === 413) {
+        key = 'upload.errTooBig';
+        params = { size: fmtBytes(current ? current.size : 0) };
+      }
+      resetForm(data, key, params);
+    };
+    xhr.onerror = function () { resetForm(null, 'common.netError'); };
+    xhr.onabort = function () { resetForm(null, 'upload.errCancelled'); };
+
+    xhr.send(fd);
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (uploading) return;
+    var err = validate(current);
+    if (err) {
+      showError(null, err.key, err.params);
+      submitBtn.disabled = true;
+      return;
+    }
+    doUpload();
+  });
+
+  /* 跟着语言开关重画：这些文案是 JS 运行时写的，切语言时要刷新一遍 */
+  window.addEventListener('imgup:languagechange', function () {
+    dropTitle.textContent = current ? t('upload.dropTitleChosen') : t('upload.dropTitle');
+    updateNamePreview();
+    if (uploading) { submitBtn.textContent = t('upload.uploading'); }
+    if (!progress.classList.contains('hidden')) {
+      progressText.textContent = t(progressKey, progressParams);
+    }
+    if (errState) { setMsg(serverText(errState.data, errState.key, errState.params)); }
+  });
+
+  window.addEventListener('beforeunload', function () {
+    if (objectUrl) { URL.revokeObjectURL(objectUrl); }
+  });
+})();
+</script>
+
+</body>
+</html>
