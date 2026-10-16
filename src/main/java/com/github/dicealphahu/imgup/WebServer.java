@@ -1104,8 +1104,13 @@ public final class WebServer {
         if (data == null) {
             return sendJson(exchange, 404, error("not_found", 404, "找不到这个资源", null));
         }
+        // 按扩展名给 Content-Type。少写一个就会退化成 application/octet-stream，
+        // 浏览器会「下载」而不是使用 —— favicon.svg 当初就是这么不生效的。
         String type = name.endsWith(".css") ? "text/css; charset=utf-8"
                 : name.endsWith(".js") ? "application/javascript; charset=utf-8"
+                : name.endsWith(".svg") ? "image/svg+xml; charset=utf-8"
+                : name.endsWith(".png") ? "image/png"
+                : name.endsWith(".ico") ? "image/x-icon"
                 : "application/octet-stream";
         return sendBytes(exchange, 200, data, type, "public, max-age=3600", null);
     }

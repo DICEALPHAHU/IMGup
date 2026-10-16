@@ -379,6 +379,25 @@ with zipfile.ZipFile(jar) as zf:
             sys.exit("web/" + asset + " 不是合法 XML（浏览器会直接不显示）：" + str(error))
     print("    SVG 资源是合法 XML")
 
+    # web/ 下每种静态资源的扩展名，serveStatic 都必须有对应的 Content-Type 分支。
+    # 漏掉一种就会退化成 application/octet-stream，浏览器直接下载而不是使用；
+    # favicon.svg 当初就这么白给了一次。
+    with open("src/main/java/com/github/dicealphahu/imgup/WebServer.java",
+              encoding="utf-8") as fh:
+        server_src = fh.read()
+    served = set(re.findall(r'name\.endsWith\("\.([a-z0-9]+)"\)', server_src))
+    declared = set()
+    for info in zf.infolist():
+        m = re.match(r"web/[^/]+\.([a-z0-9]+)$", info.filename)
+        if m:
+            declared.add(m.group(1))
+    untyped = sorted(declared - served - {"html"})
+    if untyped:
+        sys.exit("web/ 下有这些扩展名没有 Content-Type 分支，浏览器会当成下载："
+                 + ", ".join(untyped))
+    print("    web/ 下每种静态资源都有 Content-Type 分支（" 
+          + "/".join(sorted(declared - {"html"})) + "）")
+
     # hidden 属性必须真能隐藏元素。
     # 浏览器默认的 [hidden]{display:none} 是 UA 样式，作者样式里任何一条 display
     # 都会盖过它 —— 曾经因为 .lang-menu 写了 display:flex，语言下拉菜单一直展开，

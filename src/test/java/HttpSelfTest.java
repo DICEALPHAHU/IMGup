@@ -225,6 +225,22 @@ public final class HttpSelfTest {
                         && js.text().contains("en: {")
                         && js.text().contains("'site.title_suffix': '-图片上传站'"),
                 "兜底字典结构不对");
+        // 每种静态资源都要有正确的 Content-Type。漏掉一种会退化成
+        // application/octet-stream，浏览器就跑去「下载」而不是使用 ——
+        // favicon.svg 当初就是这么不生效的（页面引用着它，图标却不出现）。
+        Reply icon = get("/static/favicon.svg");
+        check("favicon.svg 200", icon.status == 200, "拿到 " + icon.status);
+        check("favicon.svg 是 image/svg+xml（不是 octet-stream）",
+                String.valueOf(icon.contentType).contains("image/svg+xml"),
+                "拿到 " + icon.contentType);
+        check("favicon.svg 内容是 svg", icon.text().contains("<svg"));
+        // 浏览器还会盲请求 /favicon.ico，那边也得给图，不能是空响应
+        Reply ico = get("/favicon.ico");
+        check("favicon.ico 给的是图而不是 204", ico.status == 200, "拿到 " + ico.status);
+        check("favicon.ico 也是 svg 类型",
+                String.valueOf(ico.contentType).contains("image/svg+xml"),
+                "拿到 " + ico.contentType);
+
         Reply missing = get("/static/nope.js");
         check("不存在的资源 404", missing.status == 404, "拿到 " + missing.status);
     }
