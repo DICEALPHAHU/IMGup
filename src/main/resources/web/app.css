@@ -827,33 +827,48 @@ main.wrap { padding-bottom: 36px; }
 .adm-table {
   width: 100%;
   border-collapse: collapse;
+  /* 固定布局 + 显式列宽：
+     之前窄列用 width:1% 紧贴内容，结果整张表的剩余宽度都被「文件」那一列吃掉，
+     右边四列挤在一起、左边大片空白。改成按比例分配后各列宽度稳定，
+     也不会因为某个文件名特别长就把布局推歪。 */
+  table-layout: fixed;
 }
+
+/* 七列全用百分比，加起来正好 100%。
+   混着用固定像素和百分比会让总宽超过表格宽度，浏览器只好自己缩，结果不可预期。 */
+.adm-table th:nth-child(1) { width: 8%; }
+.adm-table th:nth-child(2) { width: 30%; }
+.adm-table th:nth-child(3) { width: 12%; }
+.adm-table th:nth-child(4) { width: 12%; }
+.adm-table th:nth-child(5) { width: 12%; }
+.adm-table th:nth-child(6) { width: 11%; }
+.adm-table th:nth-child(7) { width: 15%; }
 
 /* 列表里的字要比卡片里大一号：一屏十几行，字号小了根本读不下去 */
 .adm-table th {
   text-align: left;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: normal;
   color: #a3a3b2;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-bottom: 2px solid #33333f;
   white-space: nowrap;
 }
 
 .adm-table td {
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-bottom: 1px solid #26262f;
   vertical-align: middle;
-  font-size: 15px;
+  font-size: 17px;
 }
 
 /* 文件名比正文再大一点，它是这一行里最需要被认出来的东西 */
 .adm-table .adm-name {
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .adm-table .adm-meta {
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .adm-table tbody tr:hover td {
@@ -863,6 +878,7 @@ main.wrap { padding-bottom: 36px; }
 .adm-row-thumb {
   display: block;
   width: 88px;
+  max-width: 100%;
   height: 88px;
   object-fit: contain;
   background: #12121a;
@@ -875,10 +891,9 @@ main.wrap { padding-bottom: 36px; }
   width: 110px;
 }
 
-/* 玩家 / 大小 / 尺寸 / 状态 这几列内容都很短，让它们紧贴文字实际宽度，
-   剩下的宽度留给文件名那一列 —— 文件名是最长的 */
+/* 玩家 / 大小 / 尺寸 / 状态 这几列内容都很短，别让它们折行。
+   宽度由上面的 nth-child 按比例决定，这里只管不换行。 */
 .adm-col-narrow {
-  width: 1%;
   white-space: nowrap;
 }
 
