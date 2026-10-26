@@ -1432,9 +1432,25 @@ public final class WebServer {
         }
     }
 
+    /**
+     * 返回一个渲染好的页面。
+     *
+     * 必须显式声明 no-cache。以前这里连 Cache-Control 都不发，浏览器就按自己的
+     * 启发式规则缓存 —— 插件升级之后站长刷新后台，看到的还是旧页面（旧按钮、旧的
+     * 点击行为），会以为改动没生效。
+     *
+     * no-cache 不等于不缓存：每次回来问一句，内容没变就回 304，几乎不花流量。
+     */
     private int sendHtml(HttpExchange exchange, String html) throws IOException {
-        return sendBytes(exchange, 200, html.getBytes(StandardCharsets.UTF_8),
-                "text/html; charset=utf-8", null, null);
+        byte[] data = html.getBytes(StandardCharsets.UTF_8);
+        String etag = "\"" + crc32(data) + "-" + data.length + "\"";
+        exchange.getResponseHeaders().set("ETag", etag);
+        if (etag.equals(exchange.getRequestHeaders().getFirst("If-None-Match"))) {
+            exchange.sendResponseHeaders(304, -1);
+            exchange.close();
+            return 304;
+        }
+        return sendBytes(exchange, 200, data, "text/html; charset=utf-8", "no-cache", null);
     }
 
     private int sendFile(HttpExchange exchange, Path path, boolean cache) throws IOException {

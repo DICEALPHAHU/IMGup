@@ -451,6 +451,21 @@ with zipfile.ZipFile(jar) as zf:
     if untyped:
         sys.exit("web/ 下有这些扩展名没有 Content-Type 分支，浏览器会当成下载："
                  + ", ".join(untyped))
+    # 页面和静态资源都必须显式声明 no-cache。
+    #
+    # 这两处都被坑过：静态资源原来是 max-age=3600，升级后浏览器继续用旧 i18n.js，
+    # 后台列表表头直接显示 site.admin_colFile；页面则一个缓存头都不发，浏览器按
+    # 启发式缓存，刷新仍然是旧界面（旧按钮、旧点击行为），看着像改动没生效。
+    with open("src/main/java/com/github/dicealphahu/imgup/WebServer.java",
+              encoding="utf-8") as fh:
+        web_src = fh.read()
+    for marker, label in (('"text/html; charset=utf-8", "no-cache"', "HTML 页面"),
+                          ('type, "no-cache", null', "静态资源")):
+        if marker not in web_src:
+            sys.exit(label + "没有声明 Cache-Control: no-cache —— "
+                     "升级后浏览器会继续用旧文件，界面看着像没更新")
+    print("    页面和静态资源都声明了 no-cache")
+
     print("    web/ 下每种静态资源都有 Content-Type 分支（" 
           + "/".join(sorted(declared - {"html"})) + "）")
 
