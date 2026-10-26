@@ -713,7 +713,7 @@ main.wrap { padding-bottom: 36px; }
 
 .adm-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: 14px;
   margin: 18px 0;
 }
@@ -727,11 +727,14 @@ main.wrap { padding-bottom: 36px; }
 
 .adm-thumb {
   width: 100%;
-  height: 230px;
+  /* 原图普遍比缩略图大（450x150、1500x900 这种），这里是**缩小**显示。
+     缩小时用 pixelated（最近邻）会把字体笔画直接采样掉，字反而更糊，
+     所以这里交给浏览器做高质量缩放。像素画放大时的那套只用在预览浮层里。 */
+  height: 280px;
   object-fit: contain;
   background: #12121a;
   border-bottom: 2px solid #33333f;
-  image-rendering: pixelated;
+  image-rendering: auto;
 }
 
 .adm-body {
@@ -853,7 +856,8 @@ main.wrap { padding-bottom: 36px; }
   object-fit: contain;
   background: #12121a;
   border: 1px solid #33333f;
-  image-rendering: pixelated;
+  /* 同上：这里是缩小显示，pixelated 只会让内容更难认 */
+  image-rendering: auto;
 }
 
 .adm-col-thumb {
