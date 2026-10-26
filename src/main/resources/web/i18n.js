@@ -33,6 +33,9 @@
 
   var DICT = {
     zh: {
+      'site.admin_colDimensions': '尺寸',
+      'site.admin_colSize': '文件大小',
+      'site.admin_colStatus': '状态',
       'site.admin_clickToPreview': '点击查看原图',
       'site.admin_closePreview': '关闭预览',
       'site.admin_deleteInUse': '注意：这张图正被放置在世界 {places}。删除后那些地图上会开始刷报错。',
@@ -234,6 +237,9 @@
     },
 
     en: {
+      'site.admin_colDimensions': 'Dimensions',
+      'site.admin_colSize': 'Size',
+      'site.admin_colStatus': 'Status',
       'site.admin_clickToPreview': 'Click to view the original',
       'site.admin_closePreview': 'Close preview',
       'site.admin_deleteInUse': 'Heads up: this image is placed in {places}. Deleting it will start throwing errors on those maps.',

@@ -829,20 +829,31 @@ main.wrap { padding-bottom: 36px; }
   border-collapse: collapse;
 }
 
+/* 列表里的字要比卡片里大一号：一屏十几行，字号小了根本读不下去 */
 .adm-table th {
   text-align: left;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: normal;
   color: #a3a3b2;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-bottom: 2px solid #33333f;
   white-space: nowrap;
 }
 
 .adm-table td {
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-bottom: 1px solid #26262f;
   vertical-align: middle;
+  font-size: 15px;
+}
+
+/* 文件名比正文再大一点，它是这一行里最需要被认出来的东西 */
+.adm-table .adm-name {
+  font-size: 15px;
+}
+
+.adm-table .adm-meta {
+  font-size: 13px;
 }
 
 .adm-table tbody tr:hover td {
@@ -851,8 +862,8 @@ main.wrap { padding-bottom: 36px; }
 
 .adm-row-thumb {
   display: block;
-  width: 78px;
-  height: 78px;
+  width: 88px;
+  height: 88px;
   object-fit: contain;
   background: #12121a;
   border: 1px solid #33333f;
@@ -861,13 +872,18 @@ main.wrap { padding-bottom: 36px; }
 }
 
 .adm-col-thumb {
-  width: 100px;
+  width: 110px;
 }
 
-.adm-col-meta {
-  font-size: 12px;
-  color: #a3a3b2;
+/* 玩家 / 大小 / 尺寸 / 状态 这几列内容都很短，让它们紧贴文字实际宽度，
+   剩下的宽度留给文件名那一列 —— 文件名是最长的 */
+.adm-col-narrow {
+  width: 1%;
   white-space: nowrap;
+}
+
+.adm-cell {
+  color: #c8c8d4;
 }
 
 .adm-col-actions {

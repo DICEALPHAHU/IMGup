@@ -323,7 +323,10 @@
     var headRow = document.createElement('tr');
     headRow.appendChild(th('', 'adm-col-thumb'));
     headRow.appendChild(th(t('site.admin_colFile')));
-    headRow.appendChild(th(t('site.admin_colPlayer')));
+    headRow.appendChild(th(t('site.admin_colPlayer'), 'adm-col-narrow'));
+    headRow.appendChild(th(t('site.admin_colSize'), 'adm-col-narrow'));
+    headRow.appendChild(th(t('site.admin_colDimensions'), 'adm-col-narrow'));
+    headRow.appendChild(th(t('site.admin_colStatus'), 'adm-col-narrow'));
     headRow.appendChild(th(t('site.admin_colActions'), 'adm-col-actions'));
     var thead = document.createElement('thead');
     thead.appendChild(headRow);
@@ -372,21 +375,32 @@
     }
     tr.appendChild(nameCell);
 
-    // 玩家 · 大小 · 尺寸，下面跟状态徽章
-    var metaCell = document.createElement('td');
-    metaCell.className = 'adm-col-meta';
-    var metaText = (item.player || '?') + ' · ' + fmtSize(item.bytes);
-    if (item.width > 0 && item.height > 0) {
-      metaText += ' · ' + item.width + 'x' + item.height;
-    }
-    metaCell.appendChild(document.createTextNode(metaText));
+    // 玩家 / 文件大小 / 尺寸 各占一列 —— 挤在一格里既看不清也没法对着比
+    var playerCell = document.createElement('td');
+    playerCell.className = 'adm-col-narrow adm-cell';
+    playerCell.textContent = item.player || '?';
+    tr.appendChild(playerCell);
+
+    var sizeCell = document.createElement('td');
+    sizeCell.className = 'adm-col-narrow adm-cell';
+    sizeCell.textContent = fmtSize(item.bytes);
+    tr.appendChild(sizeCell);
+
+    var dimCell = document.createElement('td');
+    dimCell.className = 'adm-col-narrow adm-cell';
+    dimCell.textContent = (item.width > 0 && item.height > 0)
+      ? item.width + 'x' + item.height
+      : '—';
+    tr.appendChild(dimCell);
+
+    var statusCell = document.createElement('td');
+    statusCell.className = 'adm-col-narrow adm-cell';
     var badge = document.createElement('span');
     var statusKey = STATUS_KEY[item.status];
     badge.className = 'adm-badge adm-' + item.status;
     badge.textContent = statusKey ? t(statusKey) : item.status;
-    metaCell.appendChild(document.createElement('br'));
-    metaCell.appendChild(badge);
-    tr.appendChild(metaCell);
+    statusCell.appendChild(badge);
+    tr.appendChild(statusCell);
 
     var actionCell = document.createElement('td');
     actionCell.className = 'adm-col-actions';
