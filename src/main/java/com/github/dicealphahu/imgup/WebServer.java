@@ -57,6 +57,18 @@ public final class WebServer {
         /** 服务器 motd（来自 server.properties 的 motd）。 */
         String serverMotd();
 
+        /**
+         * 查这张图被摆在世界哪些位置。
+         *
+         * 要找的是 Images 的类加载器和它的数据目录 —— 数据库里的 blob 只能用它自己
+         * 的类反序列化出来。
+         */
+        default ImageUsage.Result imageUsage(String imageName) {
+            // 默认实现故意返回「查不了」而不是「没被使用」：
+            // 前者会让界面提示风险，后者会静默放行删除 —— 错的必须是安全的那一侧。
+            return ImageUsage.Result.unavailable("这个宿主没有实现使用情况查询");
+        }
+
         /** 服务器名（来自 server.properties 的 server-name）。 */
         String serverName();
     }
@@ -851,6 +863,7 @@ public final class WebServer {
             case "reject" -> adminSetStatus(exchange, "reject");
             case "delete" -> adminDelete(exchange);
             case "approve-all" -> adminApproveAll(exchange);
+            case "usage" -> adminUsage(exchange);
             default -> sendJson(exchange, 404, error("not_found", 404, "没有这个后台接口", null));
         };
     }
@@ -950,6 +963,43 @@ public final class WebServer {
             return sendJson(exchange, 500, error("storage_error", 500,
                     "操作失败：" + e.getMessage(), null));
         }
+    }
+
+    /**
+     * 这张图被摆在哪里。删除前先调一次，好把「删了哪里会坏」说清楚。
+     *
+     * available 很重要：false 表示**查不了**（没装 Images、不是 SQLITE、
+     * 或者对方改了内部实现），这时候界面不能当成「没被使用」直接放行。
+     */
+    private int adminUsage(HttpExchange exchange) throws IOException {
+        if (!checkAdmin(exchange)) {
+            return sendJson(exchange, 401, error("unauthorized", 401, "需要先登录", null));
+        }
+        String name = queryParam(exchange, "name");
+        if (name.isEmpty() || !Texts.isSafeFileName(name, config.maxNameLength)) {
+            return sendJson(exchange, 400, error("bad_request", 400, "文件名不对", null));
+        }
+        ImageUsage.Result result = game.imageUsage(name);
+        List<Object> places = new ArrayList<>();
+        for (ImageUsage.Place place : result.places) {
+            Map<String, Object> one = new LinkedHashMap<>();
+            one.put("world", place.world);
+            one.put("x", place.x);
+            one.put("y", place.y);
+            one.put("z", place.z);
+            one.put("map_id", place.mapId);
+            one.put("label", place.describe());
+            places.add(one);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", true);
+        body.put("available", result.available);
+        body.put("reason", result.unavailableReason);
+        body.put("in_use", result.inUse());
+        body.put("places", places);
+        // 数量单独给：一张大图会跨很多个地图格，界面要根据数量决定显示前几个
+        body.put("total", places.size());
+        return sendJson(exchange, 200, body);
     }
 
     private int adminDelete(HttpExchange exchange) throws IOException {

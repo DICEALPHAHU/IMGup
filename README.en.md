@@ -97,6 +97,10 @@ For admins:
   `/imgup no <name> [reason]` to reject.
 - Web panel: `http://<address>/admin`, sign in with `web.admin_password`.
   Bulk approval, deletion and status filtering are all there.
+  Switch between the grid and a file-manager style list, and click a thumbnail to
+  view the original. **Before deleting, ImgUp looks the image up in the Images
+  database**; if it is placed somewhere, the world name and coordinates are shown —
+  deleting an image that is in use makes those maps start throwing errors.
 
 ---
 

@@ -267,6 +267,20 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
         }
     }
 
+    /**
+     * 查这张图被摆在世界的哪些位置。
+     *
+     * Images 数据库里的 blob 是 Java 序列化的它自己的类，只能用它的类加载器反序列化。
+     * 没装 Images、或者对方改了实现，都会返回 available=false —— 调用方必须据此
+     * 区分「确认没被使用」和「查不了」。
+     */
+    @Override
+    public ImageUsage.Result imageUsage(String imageName) {
+        org.bukkit.plugin.Plugin images = getServer().getPluginManager().getPlugin("Images");
+        ClassLoader loader = images == null ? null : images.getClass().getClassLoader();
+        return ImageUsage.find(imagesDir, imageName, loader, getLogger());
+    }
+
     // -------------------------------------------------- WebServer.GameBridge
 
     /**

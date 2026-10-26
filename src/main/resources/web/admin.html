@@ -89,6 +89,12 @@
 
 </main>
 
+<div class="adm-modal adm-lightbox-wrap" id="lightbox" hidden
+     title="$msg_site_admin_closePreview" aria-label="$msg_site_admin_closePreview" role="dialog">
+  <img id="lightboxImg" alt="">
+  <p class="adm-lightbox-caption" id="lightboxCaption"></p>
+</div>
+
 <div class="adm-modal" id="confirmBox" hidden>
   <div class="adm-modal-card" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
     <p class="adm-modal-title" id="confirmTitle"></p>
@@ -141,6 +147,9 @@
   var confirmText = document.getElementById('confirmText');
   var confirmOk = document.getElementById('confirmOk');
   var confirmCancel = document.getElementById('confirmCancel');
+  var lightbox = document.getElementById('lightbox');
+  var lightboxImg = document.getElementById('lightboxImg');
+  var lightboxCaption = document.getElementById('lightboxCaption');
 
   // 网格 / 列表两种视图。选择记在 localStorage 里，下次进来还是上次那样。
   var VIEW_KEY = 'imgup_admin_view';
@@ -450,9 +459,16 @@
     var href = item.url || ('/preview/' + encodeURIComponent(item.name));
     var a = document.createElement('a');
     a.href = href;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    a.title = item.name;
+    a.className = 'adm-thumb-link';
+    a.title = t('site.admin_clickToPreview');
+    a.addEventListener('click', function (e) {
+      // 普通左键：页面内看原图；Ctrl/Shift/中键：照旧在新标签页打开
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) {
+        return;
+      }
+      e.preventDefault();
+      openLightbox(item);
+    });
     var img = document.createElement('img');
     img.className = cls;
     img.loading = 'lazy';
@@ -461,6 +477,33 @@
     a.appendChild(img);
     return a;
   }
+
+  /**
+   * 原图预览。网格里的缩略图只有两三百像素，认不出细节是必然的，
+   * 所以点开一个占满屏幕的浮层直接看原图，不用另开标签页。
+   */
+  function openLightbox(item) {
+    var href = item.url || ('/preview/' + encodeURIComponent(item.name));
+    lightboxImg.src = href;
+    lightboxImg.alt = item.name;
+    var parts = [item.name];
+    if (item.player) {
+      parts.push(item.player);
+    }
+    if (item.width > 0 && item.height > 0) {
+      parts.push(item.width + 'x' + item.height);
+    }
+    lightboxCaption.textContent = parts.join(' · ');
+    lightbox.hidden = false;
+  }
+
+  function closeLightbox() {
+    lightbox.hidden = true;
+    lightboxImg.removeAttribute('src');
+  }
+
+  // 点哪里都关（图片本身也是关闭热区，不然大图会挡住背后的区域）
+  lightbox.addEventListener('click', closeLightbox);
 
   /**
    * 一张图能做的操作。卡片和列表共用同一套，免得两边按钮长得不一样。
@@ -495,17 +538,47 @@
   }
 
   function act(action, name, el) {
-    // 删除和拒绝都是不可逆的（删除还会让地图上的画变空白），先问一句
-    if (action === 'delete' || action === 'reject') {
-      var isDelete = action === 'delete';
-      askConfirm(
-        t(isDelete ? 'site.admin_deleteConfirmTitle' : 'site.admin_rejectConfirmTitle'),
-        t(isDelete ? 'site.admin_deleteConfirm' : 'site.admin_rejectConfirm', { name: name }),
-        t(isDelete ? 'site.admin_delete' : 'site.admin_reject'),
-        function () { send(action, name, el); });
+    // 拒绝只是把文件挪到 rejected，问一句就行
+    if (action === 'reject') {
+      askConfirm(t('site.admin_rejectConfirmTitle'),
+        t('site.admin_rejectConfirm', { name: name }),
+        t('site.admin_reject'),
+        function () { send('reject', name, el); });
+      return;
+    }
+    if (action === 'delete') {
+      // 删除是不可逆的，而且这张图可能正被摆在游戏里 —— 那边一删就刷报错。
+      // 所以先问 Images 的数据库，把具体位置查出来再弹确认。
+      req('GET', '/admin/api/usage?name=' + encodeURIComponent(name), undefined)
+        .then(function (r) {
+          if (r.status === 401) { showLogin(); return; }
+          showDeleteConfirm(name, el, r.ok ? r.data : null);
+        })
+        .catch(function () {
+          showDeleteConfirm(name, el, null);
+        });
       return;
     }
     send(action, name, el);
+  }
+
+  /**
+   * 删除确认。查到了放置位置就写进弹窗里，让人知道删掉之后哪里的画会坏。
+   *
+   * info 为 null 表示连查询都没成功 —— 这种情况也要说清楚，不能装作没事。
+   */
+  function showDeleteConfirm(name, el, info) {
+    var text = t('site.admin_deleteConfirm', { name: name });
+    if (info && info.available && info.in_use) {
+      // 一张大图会跨几十个地图格，位置上只列前三个，后面用总数带过
+      var labels = (info.places || []).slice(0, 3).map(function (p) { return p.label; });
+      var extra = (info.total || 0) > labels.length ? ' …(+' + ((info.total || 0) - labels.length) + ')' : '';
+      text += ' ' + t('site.admin_deleteInUse', { places: labels.join(' · ') + extra });
+    } else if (info && !info.available) {
+      text += ' ' + t('site.admin_deleteUsageUnknown', { reason: info.reason || '?' });
+    }
+    askConfirm(t('site.admin_deleteConfirmTitle'), text, t('site.admin_delete'),
+      function () { send('delete', name, el); });
   }
 
   /** 真正发请求。弹窗确认后才走到这里。 */
@@ -579,8 +652,14 @@
   });
 
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && !confirmBox.hidden) {
+    if (e.key !== 'Escape') {
+      return;
+    }
+    if (!confirmBox.hidden) {
       closeConfirm();
+    }
+    if (!lightbox.hidden) {
+      closeLightbox();
     }
   });
 

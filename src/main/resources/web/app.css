@@ -906,6 +906,39 @@ main.wrap { padding-bottom: 36px; }
   margin-top: 4px;
 }
 
+/* 缩略图外面那层可点区域 */
+.adm-thumb-link {
+  display: block;
+  line-height: 0;
+  cursor: zoom-in;
+}
+
+/* 原图预览：占满屏幕的浮层 */
+.adm-lightbox-wrap {
+  flex-direction: column;
+  gap: 10px;
+  cursor: zoom-out;
+  padding: 24px;
+}
+
+#lightboxImg {
+  max-width: 100%;
+  max-height: 82vh;
+  object-fit: contain;
+  background: #12121a;
+  border: 2px solid #33333f;
+  /* 地图图是低分辨率的方块画，放大时不要让浏览器糊化 */
+  image-rendering: pixelated;
+}
+
+.adm-lightbox-caption {
+  margin: 0;
+  font-size: 12px;
+  color: #a3a3b2;
+  text-align: center;
+  word-break: break-all;
+}
+
 .btn-danger {
   border-color: #a13b3b;
   color: #e07070;

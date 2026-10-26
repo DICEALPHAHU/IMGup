@@ -33,6 +33,10 @@
 
   var DICT = {
     zh: {
+      'site.admin_clickToPreview': '点击查看原图',
+      'site.admin_closePreview': '关闭预览',
+      'site.admin_deleteInUse': '注意：这张图正被放置在世界 {places}。删除后那些地图上会开始刷报错。',
+      'site.admin_deleteUsageUnknown': '查不到它的使用情况（{reason}）。删除前请自己确认它没被摆在游戏里。',
       'common.cancel': '取消',
       'site.admin_colActions': '操作',
       'site.admin_colFile': '文件',
@@ -230,6 +234,10 @@
     },
 
     en: {
+      'site.admin_clickToPreview': 'Click to view the original',
+      'site.admin_closePreview': 'Close preview',
+      'site.admin_deleteInUse': 'Heads up: this image is placed in {places}. Deleting it will start throwing errors on those maps.',
+      'site.admin_deleteUsageUnknown': 'Could not check where it is used ({reason}). Make sure it is not placed in game before deleting.',
       'common.cancel': 'Cancel',
       'site.admin_colActions': 'Actions',
       'site.admin_colFile': 'File',
