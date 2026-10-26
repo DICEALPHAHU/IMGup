@@ -1167,7 +1167,28 @@ public final class WebServer {
                 : name.endsWith(".png") ? "image/png"
                 : name.endsWith(".ico") ? "image/x-icon"
                 : "application/octet-stream";
-        return sendBytes(exchange, 200, data, type, "public, max-age=3600", null);
+        // 这里不能用 max-age 强缓存。
+        //
+        // 插件升级之后 HTML 是新的、而浏览器还在用旧 i18n.js，结果界面上直接冒出
+        // site.admin_colFile 这种原始键名 —— 后台列表的表头就这么坏过一次。
+        // 改成 no-cache（每次都回来问一句）+ ETag：内容没变就回 304，代价只有一个
+        // 几百字节的响应；内容变了立刻就能拿到新的。
+        String etag = "\"" + crc32(data) + "-" + data.length + "\"";
+        exchange.getResponseHeaders().set("ETag", etag);
+        String ifNoneMatch = exchange.getRequestHeaders().getFirst("If-None-Match");
+        if (etag.equals(ifNoneMatch)) {
+            exchange.sendResponseHeaders(304, -1);
+            exchange.close();
+            return 304;
+        }
+        return sendBytes(exchange, 200, data, type, "no-cache", null);
+    }
+
+    /** 静态资源做 ETag 用的内容指纹。 */
+    private static String crc32(byte[] data) {
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(data);
+        return Long.toHexString(crc.getValue());
     }
 
     // -------------------------------------------------------- 页面
