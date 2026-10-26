@@ -279,8 +279,13 @@
 
     var meta = document.createElement('p');
     meta.className = 'adm-meta muted';
-    meta.textContent = (item.player || '?') + ' · ' + fmtSize(item.bytes)
-      + ' · ' + item.width + 'x' + item.height;
+    // 宽高可能是 0：补登记的老图如果读不出尺寸（文件坏了、扩展名和内容对不上），
+    // 就别显示，否则界面上会出现 "· 0x0" 这种看着像坏了的字样。
+    var metaText = (item.player || '?') + ' · ' + fmtSize(item.bytes);
+    if (item.width > 0 && item.height > 0) {
+      metaText += ' · ' + item.width + 'x' + item.height;
+    }
+    meta.textContent = metaText;
     body.appendChild(meta);
 
     var badge = document.createElement('span');

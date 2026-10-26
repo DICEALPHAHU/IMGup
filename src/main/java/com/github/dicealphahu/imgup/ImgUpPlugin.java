@@ -60,6 +60,15 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
             return;
         }
 
+        // 索引是插件自己的，第一次装上时里面什么都没有，而 Images 目录里可能早就有一堆图了。
+        // 不补登记的话后台会显示 0 张，服主会以为插件坏了。这里说清楚发生了什么。
+        if (store.recoveredTotal > 0) {
+            getLogger().info("已把磁盘上 " + store.recoveredTotal + " 张没有记录的图片补登记进索引"
+                    + (store.recoveredPublished > 0
+                            ? "（其中 " + store.recoveredPublished + " 张来自 Images 目录，标记为已发布）"
+                            : ""));
+        }
+
         // ---- 指令 ----
         ImgUpCommand executor = new ImgUpCommand(this);
         PluginCommand root = getCommand("imgup");

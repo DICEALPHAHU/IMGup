@@ -7,6 +7,7 @@ import com.github.dicealphahu.imgup.Sessions;
 import com.github.dicealphahu.imgup.WebConfig;
 import com.github.dicealphahu.imgup.Resources;
 import com.github.dicealphahu.imgup.Texts;
+import com.github.dicealphahu.imgup.UploadStore;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,6 +50,7 @@ public final class CoreSelfTest {
         testSanitizeNickname();
         testDefaultNickname();
         testSafeFileName();
+        testRecoverExistingImages();
         testUrlEncode();
         testHtmlEscape();
         testPngRoundTrip();
@@ -306,6 +308,92 @@ public final class CoreSelfTest {
         check("拒绝非法扩展名", !Texts.isSafeFileName("a.exe", 64));
         check("拒绝超长", !Texts.isSafeFileName("a".repeat(200) + ".png", 64));
         check("拒绝空", !Texts.isSafeFileName("", 64));
+    }
+
+    /**
+     * 补登记：Images 数据目录里 ImgUp 之前就存在的图片，必须能出现在后台列表里。
+     *
+     * 这是真实踩到的 bug —— 服主装好插件、登录后台，一张图都看不到，因为索引是空的，
+     * 而那 106 张图躺在 Images 目录根下，从来没经过上传流程。
+     */
+    private static void testRecoverExistingImages() throws Exception {
+        System.out.println("\n== 补登记已有图片 ==");
+        Path tmp = Files.createTempDirectory("imgup-recover");
+        Path dataDir = tmp.resolve("data");
+        Path imagesDir = tmp.resolve("images");
+        Files.createDirectories(dataDir);
+        Files.createDirectories(imagesDir);
+
+        // Images 目录里真实会有的东西：图片 + 一堆非图片杂物
+        // 这张写成真实 PNG（实际不删，但内容是合法的），用来验证宽高能被读出来
+        BufferedImage real = new BufferedImage(4, 3, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = real.createGraphics();
+        g.setColor(Color.BLUE);
+        g.fillRect(0, 0, 4, 3);
+        g.dispose();
+        ImageIO.write(real, "png", imagesDir.resolve("Steve-海报.png").toFile());
+        Files.write(imagesDir.resolve("Alex-cat.jpg"), new byte[]{4, 5});
+        Files.write(imagesDir.resolve("我的海报-最终版.jpeg"), new byte[]{6});
+        // 以下都不该被登记
+        Files.write(imagesDir.resolve("config.yml"), new byte[]{(byte) 'a'});
+        Files.write(imagesDir.resolve("images.db"), new byte[]{(byte) 'b'});
+        Files.write(imagesDir.resolve("Images.zip"), new byte[]{(byte) 'c'});
+        Files.write(imagesDir.resolve("A1不允许上传其他格式"), new byte[]{});
+        Files.write(imagesDir.resolve("broken.exe"), new byte[]{(byte) 'd'});
+
+        UploadStore store = new UploadStore(dataDir, imagesDir);
+
+        checkEquals("补登记了 3 张图片", 3, store.recoveredPublished);
+        checkEquals("总数也是 3", 3, store.recoveredTotal);
+        checkEquals("图片总数", 3, store.byStatus(null).size());
+
+        UploadStore.Item png = store.get("Steve-海报.png");
+        check("png 进了索引", png != null);
+        if (png != null) {
+            check("状态是已发布", UploadStore.STATUS_PUBLISHED.equals(png.status));
+            checkEquals("玩家名从文件名反推出来", "Steve", png.player);
+            checkEquals("昵称去掉了玩家前缀", "海报", png.nickname);
+            checkEquals("宽读出来了", 4, png.width);
+            checkEquals("高读出来了", 3, png.height);
+            check("文件大小大于 0", png.bytes > 0);
+        }
+
+        UploadStore.Item jpg = store.get("Alex-cat.jpg");
+        checkEquals("jpg 也认", "Alex", jpg == null ? null : jpg.player);
+        // 这个文件内容是假的（不是真 JPG），读不出尺寸时要留 0，不能抛异常
+        checkEquals("假图片的宽留 0", 0, jpg == null ? -1 : jpg.width);
+
+        // 中文前缀不是合法玩家名，应该留空而不是瞎猜
+        UploadStore.Item cn = store.get("我的海报-最终版.jpeg");
+        check("中文前缀的图也登记了", cn != null);
+        checkEquals("但玩家名留空", "", cn == null ? "x" : cn.player);
+
+        check("config.yml 没被当成图片", store.get("config.yml") == null);
+        check("images.db 没被当成图片", store.get("images.db") == null);
+        check("zip 没被当成图片", store.get("Images.zip") == null);
+        check("无扩展名文件没被当成图片", store.get("A1不允许上传其他格式") == null);
+        check("exe 没被当成图片", store.get("broken.exe") == null);
+
+        // 重启一次不该重复登记
+        UploadStore again = new UploadStore(dataDir, imagesDir);
+        checkEquals("重启后不重复补登记", 0, again.recoveredTotal);
+        checkEquals("图片还是 3 张", 3, again.byStatus(null).size());
+
+        // 删掉一张，重启后不该复活
+        again.delete("Alex-cat.jpg");
+        UploadStore third = new UploadStore(dataDir, imagesDir);
+        checkEquals("删掉的图不会在重启后复活", 2, third.byStatus(null).size());
+        check("确实没了", third.get("Alex-cat.jpg") == null);
+
+        System.out.println("\n== 从文件名反解玩家 ==");
+        checkEquals("正常", "Steve", Texts.playerFromFileName("Steve-海报.png"));
+        checkEquals("下划线", "a_b", Texts.playerFromFileName("a_b-x.jpg"));
+        checkEquals("没有连字符", "", Texts.playerFromFileName("海报.png"));
+        checkEquals("连字符在开头", "", Texts.playerFromFileName("-x.png"));
+        checkEquals("前缀不是玩家名", "", Texts.playerFromFileName("我的海报-x.png"));
+        checkEquals("前缀太长", "", Texts.playerFromFileName("a".repeat(17) + "-x.png"));
+        checkEquals("去掉前缀和扩展名", "海报", Texts.nicknameFromFileName("Steve-海报.png"));
+        checkEquals("没有前缀时就是去扩展名", "海报", Texts.nicknameFromFileName("海报.png"));
     }
 
     private static void testUrlEncode() {

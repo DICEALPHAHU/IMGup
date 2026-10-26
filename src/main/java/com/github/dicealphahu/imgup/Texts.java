@@ -204,6 +204,48 @@ public final class Texts {
         return ext.equals("png") || ext.equals("jpg") || ext.equals("jpeg");
     }
 
+    /**
+     * 从「玩家-图片名.png」里反解出玩家名，解不出来返回空串。
+     *
+     * 用来补登记 ImgUp 之前就存在的图片 —— 那时没有上传记录，只能从文件名反推。
+     *
+     * 只认合法的 Minecraft 用户名（字母数字下划线、1-16 位）。宁可留空也不能瞎猜：
+     * 「我的海报-最终版.png」第一个连字符左边是「我的海报」，那不是玩家名。
+     */
+    public static String playerFromFileName(String fileName) {
+        if (fileName == null) {
+            return "";
+        }
+        int dash = fileName.indexOf('-');
+        if (dash <= 0 || dash > 16) {
+            return "";
+        }
+        String player = fileName.substring(0, dash);
+        for (int i = 0; i < player.length(); i++) {
+            char c = player.charAt(i);
+            boolean ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                    || (c >= '0' && c <= '9') || c == '_';
+            if (!ok) {
+                return "";
+            }
+        }
+        return player;
+    }
+
+    /**
+     * 从「玩家-图片名.png」里取出图片名（去掉玩家前缀和扩展名）。
+     * 没有玩家前缀时就等于「文件名去扩展名」。
+     */
+    public static String nicknameFromFileName(String fileName) {
+        String base = defaultNickname(fileName);
+        String player = playerFromFileName(fileName);
+        if (!player.isEmpty()) {
+            base = base.substring(player.length() + 1);
+        }
+        base = base.trim();
+        return base.isEmpty() ? defaultNickname(fileName) : base;
+    }
+
     private static String trimEdges(String value) {
         int start = 0;
         int end = value.length();

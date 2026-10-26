@@ -286,10 +286,20 @@ thread executor. No network framework is involved, so the artifact is a single
 jar with no runtime dependencies beyond the server itself.
 
 **Uploaded images are written straight into the Images plugin's data directory**,
-because that is the only directory `/image create` looks at. The moderation index
-belongs to this plugin, and losing it does not affect already-published images
-(the game only checks whether the file exists). At startup, files present on disk
-but missing from the index are registered back into it.
+because that is the only directory `/image create` looks at.
+
+The moderation index belongs to this plugin, so **at startup any image on disk that
+is missing from the index is registered back into it** — not just the ones under
+`pending/` and `rejected/`, but also whatever sits in the root of the Images data
+directory: images that predate ImgUp, or ones dropped in by hand. They show up in
+the admin panel as published, ready to review, delete or link to, instead of having
+to browse the folder manually.
+
+When recovering, the player is parsed back out of the `<player>-<image name>` file
+name (only valid Minecraft usernames are accepted; otherwise it stays empty), the
+creation time comes from the file's modification time, and dimensions are read from
+the image header without decoding any pixels — so even a hundred-plus images only
+cost a few dozen milliseconds at startup.
 
 **The site only listens on the port you configure.** With `web.enabled: false`
 no port is opened at all.

@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -108,6 +109,11 @@ public final class UploadStore {
     private final Map<String, Item> index = new LinkedHashMap<>();
     private final Set<String> reserved = ConcurrentHashMap.newKeySet();
 
+    /** 启动时从磁盘补登记了多少条（0 表示索引和磁盘本来就一致）。 */
+    public int recoveredTotal;
+    /** 其中有多少是从 Images 数据目录补登记的、ImgUp 之前就存在的图片。 */
+    public int recoveredPublished;
+
     public UploadStore(Path dataDir, Path imagesDir) throws IOException {
         this.dataDir = dataDir;
         this.pendingDir = dataDir.resolve("pending");
@@ -198,15 +204,26 @@ public final class UploadStore {
     }
 
     /**
-     * 索引里没有、但磁盘上存在的文件补登记（比如上次写到一半崩了，或者索引丢了）。
+     * 索引里没有、但磁盘上存在的文件补登记（比如上次写到一半崩了，索引丢了，
+     * 或者这张图是 ImgUp 装上之前就已经在服务器里的）。
      *
-     * pending 和 rejected 都要扫：只扫 pending 的话，索引一旦丢失，被拒绝的图片就
-     * 变成谁也看不见、谁也删不掉的孤儿文件，永远占着磁盘。
+     * 三个目录都要扫：
+     * <ul>
+     *   <li>pending / rejected —— 索引一旦丢失，这些图会变成谁也看不见、谁也删不掉的
+     *       孤儿文件，永远占着磁盘；</li>
+     *   <li>images —— Images 插件的数据目录，也就是游戏真正读取的地方。服主装 ImgUp
+     *       之前就已经有的图、或者后来手动丢进去的图都在这里。不扫的话索引是空的，
+     *       后台一张也列不出来。</li>
+     * </ul>
      */
     private void recoverOrphans() {
         int pendingCount = recoverFrom(pendingDir, STATUS_PENDING);
         int rejectedCount = recoverFrom(rejectedDir, STATUS_REJECTED);
-        if (pendingCount + rejectedCount > 0) {
+        int publishedCount = recoverFromImagesDir();
+        int backfilled = backfillDimensions();
+        this.recoveredPublished = publishedCount;
+        this.recoveredTotal = pendingCount + rejectedCount + publishedCount;
+        if (recoveredTotal > 0 || backfilled > 0) {
             try {
                 save();
             } catch (RuntimeException e) {
@@ -231,11 +248,49 @@ public final class UploadStore {
                 item.player = "";
                 item.nickname = name;
                 item.status = status;
-                item.createdAt = System.currentTimeMillis();
-                try {
-                    item.bytes = Files.size(path);
-                } catch (IOException ignored) {
-                    item.bytes = 0;
+                item.createdAt = modifiedTime(path);
+                item.bytes = sizeOf(path);
+                index.put(name, item);
+            }
+            return orphans.size();
+        } catch (IOException ignored) {
+            // 列不出来就算了，不影响正常上传
+            return 0;
+        }
+    }
+
+    /**
+     * 扫 Images 数据目录，把没登记过的图片补成「已发布」。
+     *
+     * 这个目录里除了图片还有 config.yml、images.db、备份 zip，以及服主自己放的
+     * 说明文件（有些人就是用空文件的名字当规则清单），所以必须按扩展名过滤。
+     * {@link Texts#isSafeFileName} 正好只放行 png/jpg/jpeg，顺手把其他东西全挡掉。
+     *
+     * 这些文件躺在游戏实际读取的目录里，所以状态必然是「已发布」，不需要审核。
+     * 玩家名和昵称只能从 &lt;玩家&gt;-&lt;图片名&gt; 反推，反推不出来就留空。
+     */
+    private int recoverFromImagesDir() {
+        try (Stream<Path> stream = Files.list(imagesDir)) {
+            List<Path> orphans = stream
+                    .filter(Files::isRegularFile)
+                    .filter(p -> {
+                        String n = p.getFileName().toString();
+                        return !index.containsKey(n) && Texts.isSafeFileName(n, 180);
+                    })
+                    .toList();
+            for (Path path : orphans) {
+                String name = path.getFileName().toString();
+                Item item = new Item();
+                item.name = name;
+                item.player = Texts.playerFromFileName(name);
+                item.nickname = Texts.nicknameFromFileName(name);
+                item.status = STATUS_PUBLISHED;
+                item.createdAt = modifiedTime(path);
+                item.bytes = sizeOf(path);
+                int[] size = imageSize(path);
+                if (size != null) {
+                    item.width = size[0];
+                    item.height = size[1];
                 }
                 index.put(name, item);
             }
@@ -243,6 +298,87 @@ public final class UploadStore {
         } catch (IOException ignored) {
             // 列不出来就算了，不影响正常上传
             return 0;
+        }
+    }
+
+    /**
+     * 文件的修改时间，用来当补登记条目的创建时间。
+     *
+     * 全都记成「现在」的话，一百多张老图会挤在同一个时间点上，后台按时间排序就失去意义了。
+     */
+    private static long modifiedTime(Path path) {
+        try {
+            long millis = Files.getLastModifiedTime(path).toMillis();
+            return millis > 0 ? millis : System.currentTimeMillis();
+        } catch (IOException ignored) {
+            return System.currentTimeMillis();
+        }
+    }
+
+    private static long sizeOf(Path path) {
+        try {
+            return Files.size(path);
+        } catch (IOException ignored) {
+            return 0;
+        }
+    }
+
+    /**
+     * 给索引里已经有、但宽高是 0 的已发布条目补上尺寸。
+     *
+     * 为什么需要：早期版本补登记时没有读尺寸，索引里会留下一批 {@code 0x0} 的条目。
+     * 这些条目已经进了索引，就不会再被 {@link #recoverFromImagesDir()} 扫到，
+     * 后台会一直显示成没有尺寸。补一次写回索引，以后不用再补。
+     *
+     * 只读文件头，不解码像素；读不出来的（文件坏了）就跳过，下次启动再试，代价很小。
+     */
+    private int backfillDimensions() {
+        int filled = 0;
+        for (Item item : index.values()) {
+            if (item.width > 0 && item.height > 0) {
+                continue;
+            }
+            if (!STATUS_PUBLISHED.equals(item.status)) {
+                continue;
+            }
+            int[] size = imageSize(imagesDir.resolve(item.name));
+            if (size != null) {
+                item.width = size[0];
+                item.height = size[1];
+                filled++;
+            }
+        }
+        return filled;
+    }
+
+    /**
+     * 只读图片头拿宽高，不解码像素。
+     *
+     * 补登记时给后台列表填宽高用的。用 ImageIO.read 的话要把每张图完整解码一遍，
+     * 一百多张老图会让启动明显变慢，还得吃一遍峰值内存 —— 而这里只需要两个数字。
+     * 读不出来就返回 null（文件坏了、扩展名对不上内容），前端会跳过不显示。
+     */
+    private static int[] imageSize(Path path) {
+        try (javax.imageio.stream.ImageInputStream in =
+                     javax.imageio.ImageIO.createImageInputStream(path.toFile())) {
+            if (in == null) {
+                return null;
+            }
+            Iterator<javax.imageio.ImageReader> readers = javax.imageio.ImageIO.getImageReaders(in);
+            if (!readers.hasNext()) {
+                return null;
+            }
+            javax.imageio.ImageReader reader = readers.next();
+            try {
+                reader.setInput(in, true, true);
+                int width = reader.getWidth(0);
+                int height = reader.getHeight(0);
+                return width > 0 && height > 0 ? new int[]{width, height} : null;
+            } finally {
+                reader.dispose();
+            }
+        } catch (Exception ignored) {
+            return null;
         }
     }
 
