@@ -28,7 +28,11 @@ import java.util.logging.Level;
  */
 public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridge {
 
-    private WebConfig webConfig;
+    /** volatile：过期待审的清理任务在异步线程上读它，reload 会整个换掉。 */
+    private volatile WebConfig webConfig;
+
+    /** 定期清理过期待审图片的任务；0 或负数的过期时间表示不开启。 */
+    private org.bukkit.scheduler.BukkitTask expireTask;
     private Sessions sessions;
     private UploadStore store;
     private WebServer web;
@@ -52,8 +56,13 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
                     + imagesDir + "；游戏内 /image create 用不了。");
         }
 
+        // 先把配置读出来：UploadStore 初始化时要用命名模板去反解已有图片的文件名，
+        // 所以 WebConfig 必须在它之前就绪（以前是之后才读的）。
+        reloadSettings();
+
         try {
-            store = new UploadStore(getDataFolder().toPath(), imagesDir);
+            store = new UploadStore(getDataFolder().toPath(), imagesDir,
+                    webConfig.namingEnabled, webConfig.namingPattern);
         } catch (IOException e) {
             getLogger().log(Level.SEVERE, "无法初始化上传目录，插件停用", e);
             getServer().getPluginManager().disablePlugin(this);
@@ -68,6 +77,8 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
                             ? "（其中 " + store.recoveredPublished + " 张来自 Images 目录，标记为已发布）"
                             : ""));
         }
+
+        warnIfNamingPatternBroken();
 
         // ---- 指令 ----
         ImgUpCommand executor = new ImgUpCommand(this);
@@ -84,6 +95,7 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
         ensureAdminPassword();
         loadMessages();
         startWeb();
+        startExpireTask();
 
         getLogger().info("ImgUp 已启用：玩家用 /imgup <上传码> 确认，然后到 "
                 + webConfig.base() + " 上传图片");
@@ -91,6 +103,7 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
 
     @Override
     public void onDisable() {
+        stopExpireTask();
         if (web != null) {
             web.stop();
             web = null;
@@ -192,6 +205,66 @@ public final class ImgUpPlugin extends JavaPlugin implements WebServer.GameBridg
         reloadConfig();
         loadMessages();
         startWeb();
+        if (store != null) {
+            store.setNaming(webConfig.namingEnabled, webConfig.namingPattern);
+        }
+        warnIfNamingPatternBroken();
+        // 过期时间可能改了，重建定时任务
+        startExpireTask();
+    }
+
+    /**
+     * 命名模板开着、但模板里没有已知变量时提醒一句。
+     *
+     * 不提醒的话，站长写错成 {nicknam} 也照样能上传成功，只是文件名和预期不一样，
+     * 很难发现配置其实没生效。
+     */
+    private void warnIfNamingPatternBroken() {
+        if (webConfig.namingEnabled && !webConfig.namingPatternValid) {
+            getLogger().warning("naming.pattern 里没有可识别的变量（支持 "
+                    + String.join(" ", java.util.Arrays.stream(
+                            com.github.dicealphahu.imgup.Texts.NAME_PATTERN_VARS)
+                            .map(v -> "{" + v + "}").toArray(String[]::new))
+                    + "），已退回默认模板 {player}-{nickname}");
+        }
+    }
+
+    /** 定期把超时没人审核的待审图挪到 rejected。时间设成 0 就不开。 */
+    private void startExpireTask() {
+        stopExpireTask();
+        if (webConfig.pendingExpireHours <= 0) {
+            return;
+        }
+        // 半天扫一次就够 —— 清理是按「小时」量级的，没必要更密
+        long ticks = 20L * 60L * 60L * 6L;
+        expireTask = getServer().getScheduler()
+                .runTaskTimerAsynchronously(this, this::expirePendingNow, ticks, ticks);
+        // 启动时也扫一次，别让过期图等到下一个周期
+        getServer().getScheduler().runTaskAsynchronously(this, this::expirePendingNow);
+    }
+
+    private void stopExpireTask() {
+        if (expireTask != null) {
+            expireTask.cancel();
+            expireTask = null;
+        }
+    }
+
+    private void expirePendingNow() {
+        WebConfig cfg = webConfig;
+        if (cfg == null || cfg.pendingExpireHours <= 0 || store == null) {
+            return;
+        }
+        try {
+            int count = store.expirePending(cfg.pendingExpireHours * 3600_000L,
+                    "@site.expired_reason");
+            if (count > 0) {
+                getLogger().info("已把 " + count + " 张超过 " + cfg.pendingExpireHours
+                        + " 小时没人审核的图片移到 rejected 目录");
+            }
+        } catch (RuntimeException e) {
+            getLogger().log(Level.WARNING, "清理过期待审图片时出错", e);
+        }
     }
 
     // -------------------------------------------------- WebServer.GameBridge

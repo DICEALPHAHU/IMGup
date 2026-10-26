@@ -14,6 +14,7 @@ meta.name: "中文（简体）"
 # ------------------------------------------------------------ 网站元素（页面上显示给玩家的文字） --
 site.title_suffix: "-图片上传站"
 site.og_description: "在网页上传图片，在游戏里用地图把它贴出来。"
+site.expired_reason: "超过保留期限仍未被审核，已自动作废。"
 site.home_heading: "上传图片"
 site.home_lede: "先在网页上获取一个 8 位上传码，再进游戏输入 `/imgup 你的上传码` 完成确认，就可以上传图片了。"
 site.home_first_step_title: "第一步 · 获取上传码"

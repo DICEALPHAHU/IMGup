@@ -47,6 +47,13 @@ public final class UploadStore {
         public int height;
         public long createdAt;
         public String rejectedReason;
+        /**
+         * 玩家上传时那个文件本来的名字（不含扩展名）。
+         *
+         * 昵称默认就等于它，但玩家可以改昵称 —— 改了之后原名就只存在这里了。
+         * 后台把它显示出来，方便认出「这张图是当初那个 xxx.png」。
+         */
+        public String originalName;
 
         public Item() {
         }
@@ -62,6 +69,7 @@ public final class UploadStore {
             out.height = height;
             out.createdAt = createdAt;
             out.rejectedReason = rejectedReason;
+            out.originalName = originalName;
             return out;
         }
 
@@ -75,6 +83,7 @@ public final class UploadStore {
             out.put("width", width);
             out.put("height", height);
             out.put("created_at", createdAt);
+            out.put("original_name", originalName == null ? "" : originalName);
             if (rejectedReason != null && !rejectedReason.isEmpty()) {
                 out.put("rejected_reason", rejectedReason);
             }
@@ -88,6 +97,104 @@ public final class UploadStore {
             }
             return out;
         }
+    }
+
+    /**
+     * 按命名模板生成文件名。
+     *
+     * 模板写的是「文件名主体」，扩展名由调用方给、自动接在后面。
+     * 生成完还是要过一遍 sanitizeNickname，因为模板里有玩家填的内容（昵称、原始文件名），
+     * 那些可能带斜杠之类的字符。
+     */
+    private String makePatternName(String player, String nickname, String originalName,
+                                   String extension, int maxNameLength,
+                                   int maxNicknameLength, boolean strict)
+            throws NameConflictException {
+        String safeNickname = Texts.sanitizeNickname(nickname, maxNicknameLength);
+        if (safeNickname.isEmpty()) {
+            safeNickname = "image";
+        }
+        String safeOriginal = Texts.sanitizeNickname(
+                originalName == null || originalName.isEmpty() ? safeNickname : originalName,
+                maxNicknameLength);
+        if (safeOriginal.isEmpty()) {
+            safeOriginal = safeNickname;
+        }
+
+        // 扩展名和那个点也要占长度预算
+        int budget = Math.max(1, maxNameLength - extension.length() - 1);
+
+        String base = Texts.sanitizeNickname(
+                Texts.applyNamePattern(namingPattern, player, safeNickname, safeOriginal,
+                        System.currentTimeMillis()),
+                budget);
+        if (base.isEmpty()) {
+            // 模板里全是不认识的变量时兜底，总得生成个名字
+            base = Texts.sanitizeNickname(player + "-" + safeNickname, budget);
+        }
+        if (base.isEmpty()) {
+            base = "image";
+        }
+
+        Set<String> taken = takenNames();
+        String candidate = base + "." + extension;
+        if (!taken.contains(candidate)) {
+            reserved.add(candidate);
+            return candidate;
+        }
+        if (strict) {
+            throw new NameConflictException("已经有叫「" + base + "」的图片了，换一个昵称吧");
+        }
+        for (int suffix = 2; suffix < 1000; suffix++) {
+            String tail = "-" + suffix;
+            String trimmed = Texts.sanitizeNickname(base, Math.max(1, budget - tail.length()));
+            if (trimmed.isEmpty()) {
+                trimmed = "image";
+            }
+            candidate = trimmed + tail + "." + extension;
+            if (!taken.contains(candidate)) {
+                reserved.add(candidate);
+                return candidate;
+            }
+        }
+        throw new NameConflictException("同名图片太多了，换一个昵称吧");
+    }
+
+    /**
+     * 把超过时限还没人处理的待审图片挪到 rejected 目录。
+     *
+     * **只动 pending**。已发布的图已经在玩家的地图里用着了，挪走会让地图上的画变成空白，
+     * 所以过期清理绝不能碰它们。
+     *
+     * @return 处理了几张
+     */
+    public int expirePending(long maxAgeMillis, String reason) {
+        if (maxAgeMillis <= 0) {
+            return 0;
+        }
+        List<String> expired = new ArrayList<>();
+        lock.lock();
+        try {
+            long cutoff = System.currentTimeMillis() - maxAgeMillis;
+            for (Item item : index.values()) {
+                if (STATUS_PENDING.equals(item.status)
+                        && item.createdAt > 0 && item.createdAt < cutoff) {
+                    expired.add(item.name);
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+        int done = 0;
+        for (String name : expired) {
+            try {
+                reject(name, reason);
+                done++;
+            } catch (IOException ignored) {
+                // 单张失败不影响其他，下次还会再试
+            }
+        }
+        return done;
     }
 
     /** 文件名生成失败（同名太多）时抛出。 */
@@ -109,12 +216,25 @@ public final class UploadStore {
     private final Map<String, Item> index = new LinkedHashMap<>();
     private final Set<String> reserved = ConcurrentHashMap.newKeySet();
 
+    /** 是否用命名模板生成文件名（来自配置，reload 时可改）。 */
+    private volatile boolean namingEnabled;
+    /** 命名模板，支持 {player} {nickname} {original} {date} {time}。 */
+    private volatile String namingPattern = "{player}-{nickname}";
+
     /** 启动时从磁盘补登记了多少条（0 表示索引和磁盘本来就一致）。 */
     public int recoveredTotal;
     /** 其中有多少是从 Images 数据目录补登记的、ImgUp 之前就存在的图片。 */
     public int recoveredPublished;
 
     public UploadStore(Path dataDir, Path imagesDir) throws IOException {
+        this(dataDir, imagesDir, false, "{player}-{nickname}");
+    }
+
+    public UploadStore(Path dataDir, Path imagesDir, boolean namingEnabled,
+                       String namingPattern) throws IOException {
+        this.namingEnabled = namingEnabled;
+        this.namingPattern = namingPattern == null || namingPattern.trim().isEmpty()
+                ? "{player}-{nickname}" : namingPattern.trim();
         this.dataDir = dataDir;
         this.pendingDir = dataDir.resolve("pending");
         this.rejectedDir = dataDir.resolve("rejected");
@@ -130,6 +250,17 @@ public final class UploadStore {
 
     public Path imagesDir() {
         return imagesDir;
+    }
+
+    /**
+     * /imgup reload 时更新命名模板。
+     *
+     * 只影响**之后**上传的文件；已经存在的文件名不会去改 —— 改了游戏里就找不到它们了。
+     */
+    public void setNaming(boolean enabled, String pattern) {
+        this.namingEnabled = enabled;
+        this.namingPattern = pattern == null || pattern.trim().isEmpty()
+                ? "{player}-{nickname}" : pattern.trim();
     }
 
     // ------------------------------------------------------------ 读写
@@ -159,6 +290,7 @@ public final class UploadStore {
                 item.height = (int) num(map.get("height"));
                 item.createdAt = num(map.get("created_at"));
                 item.rejectedReason = str(map.get("rejected_reason"));
+                item.originalName = str(map.get("original_name"));
                 if (!item.name.isEmpty()) {
                     index.put(item.name, item);
                 }
@@ -183,6 +315,9 @@ public final class UploadStore {
                 map.put("width", item.width);
                 map.put("height", item.height);
                 map.put("created_at", item.createdAt);
+                if (item.originalName != null && !item.originalName.isEmpty()) {
+                    map.put("original_name", item.originalName);
+                }
                 if (item.rejectedReason != null) {
                     map.put("rejected_reason", item.rejectedReason);
                 }
@@ -282,8 +417,19 @@ public final class UploadStore {
                 String name = path.getFileName().toString();
                 Item item = new Item();
                 item.name = name;
-                item.player = Texts.playerFromFileName(name);
-                item.nickname = Texts.nicknameFromFileName(name);
+                // 启用了命名模板就按模板拆，拆不出来再退回默认的 <玩家>-<图片名>
+                java.util.Map<String, String> parsed = namingEnabled
+                        ? Texts.parseNamePattern(namingPattern, Texts.defaultNickname(name))
+                        : java.util.Map.of();
+                String parsedPlayer = parsed.get("player");
+                String parsedNickname = parsed.get("nickname");
+                String parsedOriginal = parsed.get("original");
+                item.player = parsedPlayer != null
+                        ? parsedPlayer : Texts.playerFromFileName(name);
+                item.nickname = parsedNickname != null
+                        ? parsedNickname : Texts.nicknameFromFileName(name);
+                // 老图没有独立的上传记录，「原名」就等于它的昵称
+                item.originalName = parsedOriginal != null ? parsedOriginal : item.nickname;
                 item.status = STATUS_PUBLISHED;
                 item.createdAt = modifiedTime(path);
                 item.bytes = sizeOf(path);
@@ -500,8 +646,12 @@ public final class UploadStore {
      *               玩家主动指定的名字，悄悄改成 -2 会让他困惑）
      */
     public String makeFileName(String player, String nickname, String extension,
-                               int maxNameLength, int maxNicknameLength, boolean strict)
-            throws NameConflictException {
+                               String originalName, int maxNameLength, int maxNicknameLength,
+                               boolean strict) throws NameConflictException {
+        if (namingEnabled) {
+            return makePatternName(player, nickname, originalName, extension,
+                    maxNameLength, maxNicknameLength, strict);
+        }
         int budget = maxNameLength - player.length() - 1 - extension.length() - 1;
         budget = Math.max(1, Math.min(budget, maxNicknameLength));
 
@@ -566,8 +716,8 @@ public final class UploadStore {
     // -------------------------------------------------------- 状态流转
 
     /** 落盘一张待审核（或直接发布）的图，返回索引条目。 */
-    public Item store(String name, String player, String nickname, byte[] data,
-                      int width, int height, boolean autoPublish) throws IOException {
+    public Item store(String name, String player, String nickname, String originalName,
+                      byte[] data, int width, int height, boolean autoPublish) throws IOException {
         lock.lock();
         try {
             Files.write(pendingDir.resolve(name), data);
@@ -576,6 +726,7 @@ public final class UploadStore {
             item.name = name;
             item.player = player;
             item.nickname = nickname;
+            item.originalName = originalName == null ? "" : originalName;
             item.status = autoPublish ? STATUS_PUBLISHED : STATUS_PENDING;
             item.bytes = data.length;
             item.width = width;

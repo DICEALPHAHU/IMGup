@@ -1,6 +1,11 @@
 package com.github.dicealphahu.imgup;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /** 文本处理小工具：URL 编码、HTML 转义、文件名净化。 */
@@ -202,6 +207,108 @@ public final class Texts {
         }
         String ext = name.substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
         return ext.equals("png") || ext.equals("jpg") || ext.equals("jpeg");
+    }
+
+    /**
+     * 拒绝原因是不是「语言文件的键」。
+     *
+     * 管理员手写的原因是自由文字，原样显示。但自动作废这类由插件自己产生的原因
+     * 需要按查看者的语言显示，所以存成 "@site.expired_reason" 这种形式，显示时再翻。
+     */
+    public static boolean isReasonKey(String reason) {
+        return reason != null && reason.length() > 1 && reason.charAt(0) == '@';
+    }
+
+    // ------------------------------------------------------- 文件名模板
+
+    /** 命名模板支持的变量。 */
+    public static final String[] NAME_PATTERN_VARS =
+            {"player", "nickname", "original", "date", "time"};
+
+    /** 模板里是否至少含一个已知变量。写成 "{nicknam}" 这种纯字面量就没意义了。 */
+    public static boolean hasNamePatternVar(String pattern) {
+        if (pattern == null) {
+            return false;
+        }
+        for (String v : NAME_PATTERN_VARS) {
+            if (pattern.contains("{" + v + "}")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isNamePatternVar(String name) {
+        for (String v : NAME_PATTERN_VARS) {
+            if (v.equals(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 用命名模板生成文件名主体（不含扩展名）。
+     *
+     * 未知变量按空串处理 —— 写错成 {nicknam} 时宁可少一段，也不要让文件名里留下一对花括号。
+     */
+    public static String applyNamePattern(String pattern, String player, String nickname,
+                                          String original, long epochMillis) {
+        if (pattern == null || pattern.isEmpty()) {
+            return "";
+        }
+        java.time.LocalDateTime now = java.time.LocalDateTime.ofInstant(
+                java.time.Instant.ofEpochMilli(epochMillis), java.time.ZoneId.systemDefault());
+        String out = pattern;
+        out = out.replace("{player}", player == null ? "" : player);
+        out = out.replace("{nickname}", nickname == null ? "" : nickname);
+        out = out.replace("{original}", original == null ? "" : original);
+        out = out.replace("{date}",
+                java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd").format(now));
+        out = out.replace("{time}",
+                java.time.format.DateTimeFormatter.ofPattern("HHmmss").format(now));
+        return out.replaceAll("\\{[^{}]*\\}", "");
+    }
+
+    /**
+     * 用命名模板从文件名主体（不含扩展名）反解各字段。
+     *
+     * player 限定成合法 Minecraft 用户名，其余变量按「非贪婪但非空」匹配，
+     * 所以 {player}-{nickname} 遇到 Steve-a-b 会得到 player=Steve、nickname=a-b。
+     * 解不出来返回空 Map，由调用方兜底。
+     */
+    public static Map<String, String> parseNamePattern(String pattern, String baseName) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (pattern == null || baseName == null || baseName.isEmpty()) {
+            return out;
+        }
+        StringBuilder regex = new StringBuilder("^");
+        List<String> names = new ArrayList<>();
+        int i = 0;
+        while (i < pattern.length()) {
+            int open = pattern.indexOf('{', i);
+            int close = open < 0 ? -1 : pattern.indexOf('}', open);
+            if (open < 0 || close < 0) {
+                regex.append(Pattern.quote(pattern.substring(i)));
+                break;
+            }
+            regex.append(Pattern.quote(pattern.substring(i, open)));
+            String var = pattern.substring(open + 1, close).trim();
+            if (isNamePatternVar(var)) {
+                regex.append("player".equals(var) ? "([A-Za-z0-9_]{1,16})" : "(.+?)");
+                names.add(var);
+            }
+            i = close + 1;
+        }
+        regex.append('$');
+        Matcher m = Pattern.compile(regex.toString()).matcher(baseName);
+        if (!m.matches()) {
+            return out;
+        }
+        for (int g = 0; g < names.size(); g++) {
+            out.putIfAbsent(names.get(g), m.group(g + 1));
+        }
+        return out;
     }
 
     /**

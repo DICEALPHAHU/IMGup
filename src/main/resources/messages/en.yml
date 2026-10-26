@@ -13,6 +13,7 @@ meta.name: "English"
 # ------------------------------------------------------------ Site elements (text shown to players) --
 site.title_suffix: "-Image Upload"
 site.og_description: "Upload an image on the web, then place it on a map in game."
+site.expired_reason: "Not reviewed within the retention period, so it expired automatically."
 site.home_heading: "Upload an image"
 site.home_lede: "Get an 8-character upload code here, then type `/imgup <your code>` in game to confirm. After that you can upload images."
 site.home_first_step_title: "Step 1 · Get an upload code"

@@ -702,6 +702,7 @@ public final class WebServer {
             String fileName;
             try {
                 fileName = store.makeFileName(player, nickname, processed.extension(),
+                        Texts.defaultNickname(file.fileName()),
                         config.maxNameLength, config.maxNicknameLength, false);
             } catch (UploadStore.NameConflictException e) {
                 return sendJson(exchange, 503, error("busy", 503, e.getMessage(), null));
@@ -710,8 +711,9 @@ public final class WebServer {
             UploadStore.Item item;
             try {
                 item = store.store(fileName, player, Texts.sanitizeNickname(nickname,
-                        config.maxNicknameLength), processed.data(),
-                        processed.width(), processed.height(), config.autoPublish);
+                        config.maxNicknameLength), Texts.defaultNickname(file.fileName()),
+                        processed.data(), processed.width(), processed.height(),
+                        config.autoPublish);
             } catch (IOException e) {
                 log.log(Level.WARNING, "保存上传失败 " + fileName, e);
                 return sendJson(exchange, 500, error("storage_error", 500, "保存失败，请稍后重试", null));
@@ -781,7 +783,10 @@ public final class WebServer {
 
         String newName;
         try {
-            newName = store.makeFileName(player, nickname, extension,
+            UploadStore.Item before = store.get(name);
+            String originalName = before == null || before.originalName == null
+                    ? "" : before.originalName;
+            newName = store.makeFileName(player, nickname, extension, originalName,
                     config.maxNameLength, config.maxNicknameLength, true);
         } catch (UploadStore.NameConflictException e) {
             return sendJson(exchange, 409, error("name_taken", 409, e.getMessage(), null));
@@ -1209,6 +1214,10 @@ public final class WebServer {
             values.put("url", "");
         } else {
             String reason = item.rejectedReason == null ? "" : item.rejectedReason;
+            // 插件自己产生的原因（比如自动作废）存的是键，要按页面语言翻
+            if (Texts.isReasonKey(reason)) {
+                reason = messages.get(lang, reason.substring(1));
+            }
             values.put("status_text", reason.isEmpty()
                     ? messages.html(lang, "status.rejected")
                     : messages.html(lang, "status.rejected_reason", "reason", reason));

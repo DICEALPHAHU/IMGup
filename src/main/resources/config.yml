@@ -142,6 +142,35 @@ site:
   allow_rename: true
 
 # ---------------------------------------------------------------------------
+# 文件命名 / File naming
+# ---------------------------------------------------------------------------
+# 默认（enabled: false）文件名固定是 <玩家>-<图片名>，符合大多数服务端的命名习惯。
+# 想在文件名里带上更多信息时打开它，并写一个模板。
+#
+# 可用变量：
+#   {player}    上传者的游戏 ID
+#   {nickname}  图片昵称（默认就是上传文件名去扩展名，玩家可以改）
+#   {original}  上传时那个文件本来的名字（不含扩展名）
+#   {date}      上传日期，如 20261026
+#   {time}      上传时间，如 143005
+#
+# 例子：
+#   "{player}-{nickname}"              和默认一样
+#   "{player}_{nickname}_{date}"      带上日期，同一天同一昵称不会撞
+#   "{player}-{original}"             直接用原文件名，忽略玩家改的昵称
+#
+# 打开之后，后台和「补登记已有图片」都会按同一个模板去反解文件名里的这些信息。
+# 注意：模板只影响**之后**上传的文件，已有文件的名字不会被改。
+#
+# Default (enabled: false) is the fixed <player>-<image name>. Enable this and write
+# a pattern to carry more information in the file name. Variables: {player},
+# {nickname}, {original}, {date}, {time}. It only affects files uploaded afterwards;
+# existing names are never rewritten.
+naming:
+  enabled: false
+  pattern: "{player}-{nickname}"
+
+# ---------------------------------------------------------------------------
 # 图片处理 / Image processing
 # ---------------------------------------------------------------------------
 upload:
@@ -219,6 +248,15 @@ limits:
   # Failed admin-login attempts allowed per IP per hour. Only failures are counted,
   # so normal logins are never blocked.
   login_per_ip_per_hour: 10
+
+  # 待审核的图片放多久还没人处理就自动作废（单位：小时）。168 = 7 天，填 0 表示不清理。
+  # 作废的图会被**移到 rejected 目录**（不是删除），需要的话还能找回来重新通过。
+  # 只动待审的图：已经发布的图已经在玩家地图上用着了，绝不会被挪走。
+  # How long a pending upload may sit before it is automatically expired, in hours.
+  # 168 = 7 days. 0 disables it. Expired images are MOVED to the rejected folder,
+  # not deleted. Only pending images are touched — published ones are never moved,
+  # because they are already in use on players' maps.
+  pending_expire_hours: 168
 
 # 是否要求 imgup.use 权限才能用 /imgup 确认上传码。
 # false = 所有人可用；true = 需要在 LuckPerms 里发 imgup.use。

@@ -38,6 +38,7 @@
       /* ---- 网站元素（页面上显示给玩家的文字） ---- */
       'site.title_suffix': '-图片上传站',
       'site.og_description': '在网页上传图片，在游戏里用地图把它贴出来。',
+      'site.expired_reason': '超过保留期限仍未被审核，已自动作废。',
       'site.home_heading': '上传图片',
       'site.home_lede': '先在网页上获取一个 8 位上传码，再进游戏输入 `/imgup 你的上传码` 完成确认，就可以上传图片了。',
       'site.home_first_step_title': '第一步 · 获取上传码',
@@ -224,6 +225,7 @@
       /* ---- Site elements (text shown to players) ---- */
       'site.title_suffix': '-Image Upload',
       'site.og_description': 'Upload an image on the web, then place it on a map in game.',
+      'site.expired_reason': 'Not reviewed within the retention period, so it expired automatically.',
       'site.home_heading': 'Upload an image',
       'site.home_lede': 'Get an 8-character upload code here, then type `/imgup <your code>` in game to confirm. After that you can upload images.',
       'site.home_first_step_title': 'Step 1 · Get an upload code',

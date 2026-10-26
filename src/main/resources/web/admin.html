@@ -279,14 +279,28 @@
 
     var meta = document.createElement('p');
     meta.className = 'adm-meta muted';
+    // 一行里把「谁传的、叫什么、多大、多大尺寸」说清楚，不用点进去看。
     // 宽高可能是 0：补登记的老图如果读不出尺寸（文件坏了、扩展名和内容对不上），
     // 就别显示，否则界面上会出现 "· 0x0" 这种看着像坏了的字样。
-    var metaText = (item.player || '?') + ' · ' + fmtSize(item.bytes);
+    var metaText = (item.player || '?');
+    if (item.nickname) {
+      metaText += ' · ' + item.nickname;
+    }
+    metaText += ' · ' + fmtSize(item.bytes);
     if (item.width > 0 && item.height > 0) {
       metaText += ' · ' + item.width + 'x' + item.height;
     }
     meta.textContent = metaText;
     body.appendChild(meta);
+
+    // 原始文件名和昵称不一样时才单独占一行 —— 玩家改过昵称的话，
+    // 这一行就是「这张图当初是哪个文件」的唯一线索。
+    if (item.original_name && item.original_name !== item.nickname) {
+      var orig = document.createElement('p');
+      orig.className = 'adm-meta muted';
+      orig.textContent = t('common.originalFileName') + ': ' + item.original_name;
+      body.appendChild(orig);
+    }
 
     var badge = document.createElement('span');
     var statusKey = STATUS_KEY[item.status];

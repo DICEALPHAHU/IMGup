@@ -50,6 +50,10 @@ public final class CoreSelfTest {
         testSanitizeNickname();
         testDefaultNickname();
         testSafeFileName();
+        testNamePattern();
+        testPatternNaming();
+        testExpirePending();
+        testNamingConfig();
         testRecoverExistingImages();
         testUrlEncode();
         testHtmlEscape();
@@ -396,6 +400,105 @@ public final class CoreSelfTest {
         checkEquals("没有前缀时就是去扩展名", "海报", Texts.nicknameFromFileName("海报.png"));
     }
 
+    /** 命名模板：生成 + 反解。 */
+    private static void testNamePattern() {
+        System.out.println("\n== 命名模板 ==");
+        long t = 1700000000000L;
+        checkEquals("默认模板", "Steve-海报",
+                Texts.applyNamePattern("{player}-{nickname}", "Steve", "海报", "原图", t));
+        checkEquals("带原始文件名", "Steve_原图_20231115",
+                Texts.applyNamePattern("{player}_{original}_{date}", "Steve", "海报", "原图", t));
+        checkEquals("未知变量被去掉", "Steve-海报",
+                Texts.applyNamePattern("{player}-{nickname}{nicknam}", "Steve", "海报", "x", t));
+        check("识别合法模板", Texts.hasNamePatternVar("{player}-{nickname}"));
+        check("识别非法模板", !Texts.hasNamePatternVar("{nicknam}-x"));
+
+        Map<String, String> m = Texts.parseNamePattern("{player}-{nickname}", "Steve-海报");
+        checkEquals("反解玩家", "Steve", m.get("player"));
+        checkEquals("反解昵称", "海报", m.get("nickname"));
+        Map<String, String> m2 = Texts.parseNamePattern("{player}-{nickname}", "Steve-a-b-c");
+        checkEquals("昵称里带连字符", "a-b-c", m2.get("nickname"));
+        check("中文前缀不算玩家",
+                Texts.parseNamePattern("{player}-{nickname}", "我的海报-最终版").isEmpty());
+        Map<String, String> m3 = Texts.parseNamePattern("{player}_{original}_{date}",
+                "Steve_原图_20231114");
+        checkEquals("反解原始文件名", "原图", m3.get("original"));
+        checkEquals("反解日期", "20231114", m3.get("date"));
+        check("没有分隔符时匹配不上",
+                Texts.parseNamePattern("{player}-{nickname}", "nohyphen").isEmpty());
+    }
+
+    /** 命名模板接到上传流程里：开着按模板生成，关着还是老格式。 */
+    private static void testPatternNaming() throws Exception {
+        System.out.println("\n== 按模板生成文件名 ==");
+        Path tmp = Files.createTempDirectory("imgup-naming");
+        Path dataDir = tmp.resolve("d");
+        Path imagesDir = tmp.resolve("i");
+        Files.createDirectories(dataDir);
+        Files.createDirectories(imagesDir);
+
+        UploadStore off = new UploadStore(dataDir, imagesDir);
+        String plain = off.makeFileName("Steve", "海报", "png", "原图", 64, 32, false);
+        checkEquals("关掉时是固定格式", "Steve-海报.png", plain);
+
+        UploadStore on = new UploadStore(dataDir, imagesDir, true, "{player}_{nickname}_{date}");
+        String patterned = on.makeFileName("Alex", "猫咪", "jpg", "原图", 64, 32, false);
+        check("开着时按模板生成", patterned.startsWith("Alex_猫咪_") && patterned.endsWith(".jpg"));
+
+        UploadStore orig = new UploadStore(dataDir, imagesDir, true, "{player}-{original}");
+        String byOrig = orig.makeFileName("Alex", "改过的昵称", "png", "真实文件名", 64, 32, false);
+        checkEquals("用原始文件名而不是昵称", "Alex-真实文件名.png", byOrig);
+
+        // 同名时还是要能加 -2 后缀
+        String again = orig.makeFileName("Alex", "x", "png", "真实文件名", 64, 32, false);
+        checkEquals("撞名时加后缀", "Alex-真实文件名-2.png", again);
+    }
+
+    /** 待审图片超时后要自动挪到 rejected，已发布的绝不能动。 */
+    private static void testExpirePending() throws Exception {
+        System.out.println("\n== 待审自动作废 ==");
+        Path tmp = Files.createTempDirectory("imgup-expire");
+        Path dataDir = tmp.resolve("d");
+        Path imagesDir = tmp.resolve("i");
+        Files.createDirectories(dataDir);
+        Files.createDirectories(imagesDir);
+
+        UploadStore store = new UploadStore(dataDir, imagesDir);
+        store.store("Steve-待审.png", "Steve", "待审", "待审", new byte[]{1}, 10, 10, false);
+        store.store("Steve-已发.png", "Steve", "已发", "已发", new byte[]{2}, 10, 10, true);
+        checkEquals("作废前待审 1 张", 1, store.byStatus(UploadStore.STATUS_PENDING).size());
+
+        // 时间设成 1 毫秒，睡一下让两条都「超时」
+        Thread.sleep(30);
+        int expired = store.expirePending(1, "@site.expired_reason");
+        checkEquals("作废了 1 张", 1, expired);
+
+        // 原始文件名要存下来，而且和昵称是两个独立字段
+        UploadStore.Item stored = store.get("Steve-待审.png");
+        checkEquals("原始文件名存下来了", "待审", stored == null ? null : stored.originalName);
+        Map<String, Object> json = stored == null ? Map.of() : stored.toJson(
+                WebConfig.from(new ConfigStub()));
+        checkEquals("序列化里有 original_name", "待审", json.get("original_name"));
+
+        UploadStore.Item pending = store.get("Steve-待审.png");
+        check("待审那张变成 rejected",
+                pending != null && UploadStore.STATUS_REJECTED.equals(pending.status));
+        checkEquals("原因存的是语言键", "@site.expired_reason",
+                pending == null ? null : pending.rejectedReason);
+        check("文件被挪到 rejected 目录",
+                Files.isRegularFile(dataDir.resolve("rejected").resolve("Steve-待审.png")));
+        check("待审目录里没了",
+                !Files.isRegularFile(dataDir.resolve("pending").resolve("Steve-待审.png")));
+
+        UploadStore.Item published = store.get("Steve-已发.png");
+        check("已发布的没被动",
+                published != null && UploadStore.STATUS_PUBLISHED.equals(published.status));
+        check("已发布的文件还在 Images 目录",
+                Files.isRegularFile(imagesDir.resolve("Steve-已发.png")));
+
+        checkEquals("时间设 0 时不清理", 0, store.expirePending(0, "x"));
+    }
+
     private static void testUrlEncode() {
         System.out.println("\n== URL 编码 ==");
         checkEquals("中文被编码", "%E6%B5%B7%E6%8A%A5.png",
@@ -575,6 +678,43 @@ public final class CoreSelfTest {
         checkEquals("配了就用配的值", 3,
                 WebConfig.from(new ConfigStub()
                         .set("limits.max_concurrent_uploads", 3)).maxConcurrentUploads);
+    }
+
+    // ------------------------------------------- 命名模板与过期配置
+
+    private static void testNamingConfig() {
+        System.out.println("\n== 命名模板配置 ==");
+        WebConfig 默认 = WebConfig.from(new ConfigStub());
+        check("默认不启用模板", !默认.namingEnabled);
+        checkEquals("默认模板", "{player}-{nickname}", 默认.namingPattern);
+        checkEquals("待审默认保留 7 天", 168, 默认.pendingExpireHours);
+
+        WebConfig 开启 = WebConfig.from(new ConfigStub()
+                .set("naming.enabled", true)
+                .set("naming.pattern", "{player}_{original}_{date}"));
+        check("启用了", 开启.namingEnabled);
+        checkEquals("模板读到了", "{player}_{original}_{date}", 开启.namingPattern);
+        check("模板合法", 开启.namingPatternValid);
+
+        // 写错了不能直接拿去生成文件名，否则可能产出空名字
+        WebConfig 写错 = WebConfig.from(new ConfigStub()
+                .set("naming.enabled", true)
+                .set("naming.pattern", "{nicknam}-x"));
+        check("识别出模板写错", !写错.namingPatternValid);
+        checkEquals("退回默认模板", "{player}-{nickname}", 写错.namingPattern);
+        check("但 enabled 保持原样（好让插件提醒）", 写错.namingEnabled);
+
+        WebConfig 留空 = WebConfig.from(new ConfigStub()
+                .set("naming.enabled", true).set("naming.pattern", "   "));
+        check("空模板也算写错", !留空.namingPatternValid);
+        checkEquals("空模板退回默认", "{player}-{nickname}", 留空.namingPattern);
+
+        checkEquals("过期时间 0 表示不清理", 0,
+                WebConfig.from(new ConfigStub()
+                        .set("limits.pending_expire_hours", 0)).pendingExpireHours);
+        checkEquals("过期时间可以改", 24,
+                WebConfig.from(new ConfigStub()
+                        .set("limits.pending_expire_hours", 24)).pendingExpireHours);
     }
 
     // ------------------------------------------- 站点名配置

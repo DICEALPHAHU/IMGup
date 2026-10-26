@@ -145,6 +145,25 @@ public final class WebConfig {
     /** 每 IP 每小时允许的后台登录**失败**次数。 */
     public final int loginPerIpHour;
 
+    /**
+     * 是否用命名模板来生成上传的文件名。
+     *
+     * 默认关 —— 关的时候就是固定的 &lt;玩家&gt;-&lt;图片名&gt;，和以前完全一样，
+     * 也符合很多服务端自己的命名规矩。开了之后按 {@link #namingPattern} 生成。
+     */
+    public final boolean namingEnabled;
+    /** 命名模板，支持 {player} {nickname} {original} {date} {time}。 */
+    public final String namingPattern;
+    /**
+     * 模板是否可用（至少含一个已知变量）。
+     *
+     * 单独标出来是为了让插件能在启动时提醒一句 —— 写错成 {nicknam} 的话
+     * 模板等于没生效，但文件照样能生成，不提醒很难发现。
+     */
+    public final boolean namingPatternValid;
+    /** 待审图片保留多少小时后自动作废；0 表示不自动作废。 */
+    public final int pendingExpireHours;
+
     private WebConfig(Source cfg) {
         this.enabled = cfg.getBoolean("web.enabled", true);
         this.host = cfg.getString("web.host", "0.0.0.0");
@@ -179,6 +198,16 @@ public final class WebConfig {
         this.siteName = cfg.getString("web.site_name", "CustomImagesUp").trim();
         this.maxConcurrentUploads = Math.max(0, cfg.getInt("limits.max_concurrent_uploads", 8));
         this.loginPerIpHour = clamp(cfg.getInt("limits.login_per_ip_per_hour", 10), 1, 1000);
+        // 0 表示不清理；上限给 10 年，够任何人用了
+        this.pendingExpireHours = clamp(cfg.getInt("limits.pending_expire_hours", 168), 0, 87600);
+
+        this.namingEnabled = cfg.getBoolean("naming.enabled", false);
+        String pattern = cfg.getString("naming.pattern", "{player}-{nickname}");
+        pattern = pattern == null ? "" : pattern.trim();
+        // 模板写错时不能直接拿它去生成文件名，否则可能产出空名字或一堆花括号。
+        // 这里退回默认模板，并让 namingPatternValid 为 false 好让插件提醒站长。
+        this.namingPatternValid = Texts.hasNamePatternVar(pattern);
+        this.namingPattern = namingPatternValid ? pattern : "{player}-{nickname}";
     }
 
     /** 从 Bukkit 配置构造（插件里用这个）。 */

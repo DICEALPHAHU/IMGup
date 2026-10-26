@@ -177,15 +177,18 @@ public final class ImgUpCommand implements CommandExecutor, TabCompleter {
                 plugin.notifyPlayer(done.player, "game.notify_approved", "name", done.name);
             } else {
                 UploadStore.Item done = plugin.store().reject(item.name, reason);
+                // 插件自己产生的原因（比如自动作废）存的是语言键，给人看之前先翻
+                String shownReason = Texts.isReasonKey(reason)
+                        ? plugin.msg(sender, reason.substring(1)) : reason;
                 sender.sendMessage(ChatColor.YELLOW + (reason.isEmpty()
                         ? plugin.msg(sender, "game.rejected", "name", done.name)
                         : plugin.msg(sender, "game.rejected_reason",
-                                "name", done.name, "reason", reason)));
+                                "name", done.name, "reason", shownReason)));
                 if (reason.isEmpty()) {
                     plugin.notifyPlayer(done.player, "game.notify_rejected", "name", done.name);
                 } else {
                     plugin.notifyPlayer(done.player, "game.notify_rejected_reason",
-                            "name", done.name, "reason", reason);
+                            "name", done.name, "reason", shownReason);
                 }
             }
         } catch (IOException e) {

@@ -170,9 +170,42 @@ Apply changes with `/imgup reload`.
 | `limits.max_concurrent_uploads` | `8` | Simultaneous uploads, `0` for unlimited |
 | `limits.newcode_per_ip_per_hour` | `30` | Upload codes issued per IP per hour |
 | `limits.login_per_ip_per_hour` | `10` | Failed admin logins allowed per IP per hour |
+| `limits.pending_expire_hours` | `168` | Pending uploads older than this expire automatically (moved to `rejected`, not deleted); `0` disables it |
 
 > The login limit counts **only failures**, so normal sign-ins and sign-outs are
 > never blocked. While an IP is limited, even the correct password is refused.
+
+### File name pattern
+
+By default (`naming.enabled: false`) the file name is the fixed `<player>-<image name>`,
+which matches what many servers already require. To carry more information in the
+name, switch it on:
+
+```yaml
+naming:
+  enabled: true
+  pattern: "{player}-{original}_{date}"
+```
+
+Available variables:
+
+| Variable | Meaning |
+| --- | --- |
+| `{player}` | The uploader's in-game name |
+| `{nickname}` | The image nickname (defaults to the uploaded file name without extension; the player can change it) |
+| `{original}` | The original uploaded file name, without the extension |
+| `{date}` | Upload date, e.g. `20261026` |
+| `{time}` | Upload time, e.g. `143005` |
+
+A few notes:
+
+- The pattern only affects files uploaded **afterwards**. Existing names are never
+  rewritten — renaming them would break `/image create` lookups.
+- The admin panel and the existing-image recovery use the same pattern to parse names
+  back, so the name, the uploader and the original file name are all visible there.
+- Unknown variables (typos) are dropped rather than written into the file name; the
+  plugin warns in the log at startup and falls back to the default pattern.
+- On a name clash the usual `-2`, `-3` suffix is still appended.
 
 ### Other
 
@@ -181,6 +214,8 @@ Apply changes with `/imgup reload`.
 | `language` | `zh` | Default language |
 | `messages_dir` | `messages` | Language file directory |
 | `site.allow_rename` | `true` | Let players rename their own pending uploads |
+| `naming.enabled` | `false` | Generate file names from the pattern below |
+| `naming.pattern` | `{player}-{nickname}` | File name pattern, see "File name pattern" |
 | `code_ttl_seconds` | `300` | Upload code lifetime |
 | `require_permission` | `false` | Whether uploading requires the `imgup.use` permission |
 | `notify_player` | `true` | Send moderation results to the player in game |

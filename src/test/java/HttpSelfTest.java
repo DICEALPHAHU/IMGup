@@ -657,7 +657,7 @@ public final class HttpSelfTest {
         section("未发布图片的预览必须鉴权");
 
         String name = "Frank-私密图.png";
-        store.store(name, "Frank", "私密图", png(20, 20), 20, 20, false);   // 待审
+        store.store(name, "Frank", "私密图", "私密图", png(20, 20), 20, 20, false);   // 待审
         String path = "/preview/" + java.net.URLEncoder.encode(name, java.nio.charset.StandardCharsets.UTF_8);
 
         // 1) 谁都不是
@@ -689,7 +689,7 @@ public final class HttpSelfTest {
 
         // 6) 已发布的图走 /uploads/，本来就是公开的
         String published = "Frank-公开图.png";
-        store.store(published, "Frank", "公开图", png(20, 20), 20, 20, true);
+        store.store(published, "Frank", "公开图", "公开图", png(20, 20), 20, 20, true);
         String publicPath = "/uploads/" + java.net.URLEncoder.encode(published,
                 java.nio.charset.StandardCharsets.UTF_8);
         checkEquals("已发布的图公开可访问", 200, get(publicPath).status);
@@ -1160,10 +1160,10 @@ public final class HttpSelfTest {
     /** 直接往 store 里塞一张「待审核」的图，用来测改名（避开 auto_publish）。 */
     private static String uploadAsPending(Session client, String player, String nickname)
             throws Exception {
-        String name = store.makeFileName(player, nickname, "png", 64, 32, false);
+        String name = store.makeFileName(player, nickname, "png", nickname, 64, 32, false);
         ImageTools.Processed processed = ImageTools.process(png(80, 60),
                 5 * 1024 * 1024, 2048, 40_000_000, 90);
-        store.store(name, player, nickname, processed.data(), processed.width(),
+        store.store(name, player, nickname, nickname, processed.data(), processed.width(),
                 processed.height(), false);
         return name;
     }
