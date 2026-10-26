@@ -33,6 +33,16 @@
 
   var DICT = {
     zh: {
+      'common.cancel': '取消',
+      'site.admin_colActions': '操作',
+      'site.admin_colFile': '文件',
+      'site.admin_colPlayer': '玩家',
+      'site.admin_deleteConfirm': '确定删除「{name}」吗？文件会从服务器上删掉，已经用了这张图的地图会变成空白。',
+      'site.admin_deleteConfirmTitle': '删除图片',
+      'site.admin_rejectConfirm': '确定拒绝「{name}」吗？图片会挪到 rejected 目录，玩家可以重新上传。',
+      'site.admin_rejectConfirmTitle': '拒绝图片',
+      'site.admin_viewGrid': '网格',
+      'site.admin_viewList': '列表',
       /* ---- 这个语言自己的名字 ---- */
       'meta.name': '中文（简体）',
       /* ---- 网站元素（页面上显示给玩家的文字） ---- */
@@ -220,6 +230,16 @@
     },
 
     en: {
+      'common.cancel': 'Cancel',
+      'site.admin_colActions': 'Actions',
+      'site.admin_colFile': 'File',
+      'site.admin_colPlayer': 'Player',
+      'site.admin_deleteConfirm': 'Delete "{name}"? The file is removed from the server and any map already using this image will go blank.',
+      'site.admin_deleteConfirmTitle': 'Delete image',
+      'site.admin_rejectConfirm': 'Reject "{name}"? The image is moved to the rejected folder and the player can upload it again.',
+      'site.admin_rejectConfirmTitle': 'Reject image',
+      'site.admin_viewGrid': 'Grid',
+      'site.admin_viewList': 'List',
       /* ---- This language's own name ---- */
       'meta.name': 'English',
       /* ---- Site elements (text shown to players) ---- */

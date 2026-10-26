@@ -70,6 +70,13 @@
       <button class="tab" type="button" data-filter="rejected">
         <span>$msg_site_admin_filter_rejected</span> <span class="tab-n">0</span></button>
       <button class="btn btn-sm" type="button" id="bulkBtn">$msg_site_admin_bulk_approve</button>
+
+      <span class="adm-view" id="viewTabs">
+        <button class="view-btn is-active" type="button" data-view="grid"
+                title="$msg_site_admin_viewGrid" aria-label="$msg_site_admin_viewGrid">&#9638;</button>
+        <button class="view-btn" type="button" data-view="list"
+                title="$msg_site_admin_viewList" aria-label="$msg_site_admin_viewList">&#9776;</button>
+      </span>
     </div>
 
     <div class="alert alert-error hidden" id="listMsg" role="alert"></div>
@@ -81,6 +88,17 @@
   </section>
 
 </main>
+
+<div class="adm-modal" id="confirmBox" hidden>
+  <div class="adm-modal-card" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <p class="adm-modal-title" id="confirmTitle"></p>
+    <p class="muted" id="confirmText"></p>
+    <div class="adm-modal-actions">
+      <button class="btn" type="button" id="confirmCancel">$msg_common_cancel</button>
+      <button class="btn btn-danger" type="button" id="confirmOk">$msg_site_admin_delete</button>
+    </div>
+  </div>
+</div>
 
 <footer class="foot">
   <div class="wrap">
@@ -117,7 +135,24 @@
   var bulkBtn = document.getElementById('bulkBtn');
   var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
 
-  var state = { filter: 'all', items: [], counts: {} };
+  var viewTabs = Array.prototype.slice.call(document.querySelectorAll('.view-btn'));
+  var confirmBox = document.getElementById('confirmBox');
+  var confirmTitle = document.getElementById('confirmTitle');
+  var confirmText = document.getElementById('confirmText');
+  var confirmOk = document.getElementById('confirmOk');
+  var confirmCancel = document.getElementById('confirmCancel');
+
+  // 网格 / 列表两种视图。选择记在 localStorage 里，下次进来还是上次那样。
+  var VIEW_KEY = 'imgup_admin_view';
+  function savedView() {
+    try {
+      var v = window.localStorage.getItem(VIEW_KEY);
+      return v === 'list' ? 'list' : 'grid';
+    } catch (e) {
+      return 'grid';
+    }
+  }
+  var state = { filter: 'all', items: [], counts: {}, view: savedView() };
 
   function show(el) { el.hidden = false; }
   function hide(el) { el.hidden = true; }
@@ -248,12 +283,108 @@
       }
     });
 
+    viewTabs.forEach(function (btn) {
+      btn.classList.toggle('is-active', btn.getAttribute('data-view') === state.view);
+    });
+
     grid.innerHTML = '';
+    grid.className = state.view === 'list' ? 'adm-list' : 'adm-grid';
     empty.hidden = state.items.length > 0;
 
+    if (state.view === 'list') {
+      grid.appendChild(listView(state.items));
+      return;
+    }
     state.items.forEach(function (item) {
       grid.appendChild(card(item));
     });
+  }
+
+  /* ------------------------------------------------------ 第二种：列表 */
+
+  /**
+   * 文件管理器那种列表：一行一张，缩略图小一点，信息排成列。
+   *
+   * 图多的时候比卡片好扫 —— 一屏能看到十几行，而且文件名再长也不会把布局撑歪。
+   */
+  function listView(items) {
+    var table = document.createElement('table');
+    table.className = 'adm-table';
+
+    var headRow = document.createElement('tr');
+    headRow.appendChild(th('', 'adm-col-thumb'));
+    headRow.appendChild(th(t('site.admin_colFile')));
+    headRow.appendChild(th(t('site.admin_colPlayer')));
+    headRow.appendChild(th(t('site.admin_colActions'), 'adm-col-actions'));
+    var thead = document.createElement('thead');
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    var tbody = document.createElement('tbody');
+    items.forEach(function (item) {
+      tbody.appendChild(row(item));
+    });
+    table.appendChild(tbody);
+    return table;
+  }
+
+  function th(label, cls) {
+    var el = document.createElement('th');
+    if (cls) {
+      el.className = cls;
+    }
+    el.textContent = label;
+    return el;
+  }
+
+  function row(item) {
+    var tr = document.createElement('tr');
+
+    var thumbCell = document.createElement('td');
+    thumbCell.className = 'adm-col-thumb';
+    thumbCell.appendChild(thumbLink(item, 'adm-row-thumb'));
+    tr.appendChild(thumbCell);
+
+    // 文件名 + 昵称（改了昵称的话再带上原始文件名）
+    var nameCell = document.createElement('td');
+    var name = document.createElement('code');
+    name.className = 'adm-name';
+    name.textContent = item.name;
+    nameCell.appendChild(name);
+    var subText = item.nickname || '';
+    if (item.original_name && item.original_name !== item.nickname) {
+      subText += (subText ? ' · ' : '') + t('common.originalFileName') + ': ' + item.original_name;
+    }
+    if (subText) {
+      var sub = document.createElement('p');
+      sub.className = 'adm-meta muted';
+      sub.textContent = subText;
+      nameCell.appendChild(sub);
+    }
+    tr.appendChild(nameCell);
+
+    // 玩家 · 大小 · 尺寸，下面跟状态徽章
+    var metaCell = document.createElement('td');
+    metaCell.className = 'adm-col-meta';
+    var metaText = (item.player || '?') + ' · ' + fmtSize(item.bytes);
+    if (item.width > 0 && item.height > 0) {
+      metaText += ' · ' + item.width + 'x' + item.height;
+    }
+    metaCell.appendChild(document.createTextNode(metaText));
+    var badge = document.createElement('span');
+    var statusKey = STATUS_KEY[item.status];
+    badge.className = 'adm-badge adm-' + item.status;
+    badge.textContent = statusKey ? t(statusKey) : item.status;
+    metaCell.appendChild(document.createElement('br'));
+    metaCell.appendChild(badge);
+    tr.appendChild(metaCell);
+
+    var actionCell = document.createElement('td');
+    actionCell.className = 'adm-col-actions';
+    actionCell.appendChild(actionsFor(item));
+    tr.appendChild(actionCell);
+
+    return tr;
   }
 
   /* ------------------------------------------------------ 单张卡片 */
@@ -262,12 +393,7 @@
     var box = document.createElement('div');
     box.className = 'adm-card';
 
-    var img = document.createElement('img');
-    img.className = 'adm-thumb';
-    img.loading = 'lazy';
-    img.src = item.url || ('/preview/' + encodeURIComponent(item.name));
-    img.alt = item.name;
-    box.appendChild(img);
+    box.appendChild(thumbLink(item, 'adm-thumb'));
 
     var body = document.createElement('div');
     body.className = 'adm-body';
@@ -308,6 +434,41 @@
     badge.textContent = statusKey ? t(statusKey) : item.status;
     body.appendChild(badge);
 
+    body.appendChild(actionsFor(item));
+
+    box.appendChild(body);
+    return box;
+  }
+
+  /**
+   * 缩略图做成链接：点一下在新标签页打开原图。
+   *
+   * 网格里的预览只有两三百像素，看不清细节是必然的 —— 与其把缩略图做得更大，
+   * 不如给一个直接看原图的入口。
+   */
+  function thumbLink(item, cls) {
+    var href = item.url || ('/preview/' + encodeURIComponent(item.name));
+    var a = document.createElement('a');
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.title = item.name;
+    var img = document.createElement('img');
+    img.className = cls;
+    img.loading = 'lazy';
+    img.src = href;
+    img.alt = item.name;
+    a.appendChild(img);
+    return a;
+  }
+
+  /**
+   * 一张图能做的操作。卡片和列表共用同一套，免得两边按钮长得不一样。
+   *
+   * 已发布的图**只留删除**：拒绝会把文件从 Images 目录挪走，已经贴在地图上的画
+   * 会直接变空白，这不该是个顺手就能点的按钮。
+   */
+  function actionsFor(item) {
     var actions = document.createElement('div');
     actions.className = 'adm-actions';
 
@@ -315,16 +476,13 @@
       actions.appendChild(button(t('site.admin_approve'), 'btn-primary',
         function () { act('approve', item.name, this); }));
     }
-    if (item.status !== 'rejected') {
+    if (item.status === 'pending') {
       actions.appendChild(button(t('site.admin_reject'), 'btn',
         function () { act('reject', item.name, this); }));
     }
     actions.appendChild(button(t('site.admin_delete'), 'btn btn-danger',
       function () { act('delete', item.name, this); }));
-    body.appendChild(actions);
-
-    box.appendChild(body);
-    return box;
+    return actions;
   }
 
   function button(label, cls, onClick) {
@@ -337,9 +495,21 @@
   }
 
   function act(action, name, el) {
-    if (action === 'delete' && !window.confirm(name + ' — ' + t('site.admin_delete') + '?')) {
+    // 删除和拒绝都是不可逆的（删除还会让地图上的画变空白），先问一句
+    if (action === 'delete' || action === 'reject') {
+      var isDelete = action === 'delete';
+      askConfirm(
+        t(isDelete ? 'site.admin_deleteConfirmTitle' : 'site.admin_rejectConfirmTitle'),
+        t(isDelete ? 'site.admin_deleteConfirm' : 'site.admin_rejectConfirm', { name: name }),
+        t(isDelete ? 'site.admin_delete' : 'site.admin_reject'),
+        function () { send(action, name, el); });
       return;
     }
+    send(action, name, el);
+  }
+
+  /** 真正发请求。弹窗确认后才走到这里。 */
+  function send(action, name, el) {
     el.disabled = true;
     req('POST', '/admin/api/' + action, { name: name }).then(function (r) {
       el.disabled = false;
@@ -351,6 +521,68 @@
       setMsg(listMsg, t('common.netError'));
     });
   }
+
+  /* ------------------------------------------------------ 确认弹窗 */
+
+  var pendingConfirm = null;
+
+  /**
+   * 不用 window.confirm：那个在部分内嵌浏览器里会被拦掉，而且没法显示长一点的说明。
+   * 这里弹一个页面内的框，确认后执行回调。
+   */
+  function askConfirm(title, text, okLabel, onOk) {
+    confirmTitle.textContent = title;
+    confirmText.textContent = text;
+    confirmOk.textContent = okLabel;
+    confirmBox.hidden = false;
+    pendingConfirm = onOk;
+    confirmOk.focus();
+  }
+
+  function closeConfirm() {
+    confirmBox.hidden = true;
+    pendingConfirm = null;
+  }
+
+  confirmOk.addEventListener('click', function () {
+    var fn = pendingConfirm;
+    closeConfirm();
+    if (fn) {
+      fn();
+    }
+  });
+
+  confirmCancel.addEventListener('click', closeConfirm);
+
+  // 点灰底关掉；Esc 也关
+  confirmBox.addEventListener('click', function (e) {
+    if (e.target === confirmBox) {
+      closeConfirm();
+    }
+  });
+
+  // 视图切换：只改 localStorage 和重绘，不用重新请求
+  viewTabs.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var next = btn.getAttribute('data-view') === 'list' ? 'list' : 'grid';
+      if (next === state.view) {
+        return;
+      }
+      state.view = next;
+      try {
+        window.localStorage.setItem(VIEW_KEY, next);
+      } catch (e) {
+        // 隐私模式下 localStorage 可能不可用，忽略即可 —— 只是记不住选择
+      }
+      render();
+    });
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !confirmBox.hidden) {
+      closeConfirm();
+    }
+  });
 
   bulkBtn.addEventListener('click', function () {
     bulkBtn.disabled = true;
